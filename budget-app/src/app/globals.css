@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Cocon — design tokens
+   Toute l'identité visuelle part d'ici : modifier une valeur ci-dessous
+   met à jour l'ensemble de l'application (classes bg-*, text-*, stroke-*…).
+   ========================================================================== */
+
+@theme {
+  /* Fonds & surfaces */
+  --color-canvas: #fff8fa; /* fond principal */
+  --color-surface: #ffffff; /* cartes */
+  --color-line: #f3e6ea; /* séparateurs très discrets */
+
+  /* Texte */
+  --color-ink: #3d3438; /* texte principal */
+  --color-muted: #8a7c81; /* texte secondaire */
+
+  /* Rose — identité, budget, revenus */
+  --color-blush-50: #fceef2; /* rose très clair */
+  --color-blush-100: #f7dde4; /* rose clair */
+  --color-blush-200: #f0c3cf;
+  --color-blush-300: #e8a7b8; /* rose principal */
+  --color-blush-500: #c8758e; /* graphiques */
+  --color-blush-700: #a8566f; /* texte d'accent */
+
+  /* Lilas — objectifs */
+  --color-lilac-50: #f4f1fb;
+  --color-lilac-100: #dcd5f2; /* lilas */
+  --color-lilac-300: #bbb0e4;
+  --color-lilac-500: #8e7fc9;
+  --color-lilac-700: #6b5dae;
+
+  /* Vert sauge — épargne */
+  --color-sage-50: #eff6ef;
+  --color-sage-100: #c9dec9; /* vert sauge */
+  --color-sage-300: #a5c7a8;
+  --color-sage-500: #5e9469;
+  --color-sage-700: #4a7a55;
+
+  /* Crème / pêche — dépenses */
+  --color-peach-50: #fff4e8; /* crème */
+  --color-peach-100: #fce3cf;
+  --color-peach-300: #f3c09c;
+  --color-peach-500: #dd8f63;
+  --color-peach-700: #a65a3c;
+
+  /* Rayons, ombres */
+  --radius-card: 1.75rem;
+  --radius-hero: 2rem;
+  --shadow-card: 0 1px 2px rgb(61 52 56 / 0.03), 0 12px 32px -18px rgb(61 52 56 / 0.14);
+  --shadow-float: 0 12px 32px -10px rgb(61 52 56 / 0.45);
+  --shadow-nav: 0 -1px 0 rgb(61 52 56 / 0.04), 0 18px 40px -12px rgb(61 52 56 / 0.18);
+
+  /* Animations discrètes */
+  --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-rise: rise 0.5s var(--ease-soft) both;
+  --animate-grow: grow 0.9s var(--ease-soft) both;
+  --animate-fade: fade 0.25s ease-out both;
+  --animate-sheet: sheet 0.35s var(--ease-soft) both;
+  --animate-pop: pop 0.3s var(--ease-soft) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+  @keyframes grow {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    /* Plus Jakarta Sans a des espaces très serrés : on aère légèrement. */
+    word-spacing: 0.06em;
+  }
+
+  ::selection {
+    background: var(--color-blush-100);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-blush-500);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+/* Montants alignés en colonne (listes) — jamais sur les grands chiffres. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Masque la barre de défilement des rangées de puces horizontales. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Anneaux de progression : le tracé se dessine à l'apparition. */
+.ring-draw {
+  animation: ring-draw 1.1s var(--ease-soft) both;
+}
+@keyframes ring-draw {
+  from {
+    stroke-dashoffset: var(--ring-length);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Feuille modale (<dialog>) : bottom sheet sur mobile, fenêtre centrée ensuite.
+   Entrée ET sortie animées en CSS pur (@starting-style + allow-discrete).
+   -------------------------------------------------------------------------- */
+dialog.sheet {
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 92dvh;
+  padding: 0;
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 -20px 60px -24px rgb(61 52 56 / 0.3);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(40px);
+  transition:
+    opacity 0.25s ease,
+    transform 0.4s var(--ease-soft),
+    overlay 0.4s allow-discrete,
+    display 0.4s allow-discrete;
+}
+dialog.sheet[open] {
+  opacity: 1;
+  transform: none;
+}
+@starting-style {
+  dialog.sheet[open] {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+}
+@media (width >= 40rem) {
+  dialog.sheet {
+    margin: auto;
+    max-width: 30rem;
+    max-height: min(88dvh, 52rem);
+    border-radius: 28px;
+    transform: translateY(16px) scale(0.98);
+  }
+  @starting-style {
+    dialog.sheet[open] {
+      transform: translateY(16px) scale(0.98);
+    }
+  }
+}
+dialog.sheet::backdrop {
+  background: rgb(61 52 56 / 0);
+  transition:
+    background 0.3s ease,
+    overlay 0.3s allow-discrete,
+    display 0.3s allow-discrete;
+}
+dialog.sheet[open]::backdrop {
+  background: rgb(61 52 56 / 0.3);
+  backdrop-filter: blur(3px);
+}
+@starting-style {
+  dialog.sheet[open]::backdrop {
+    background: rgb(61 52 56 / 0);
+  }
+}
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
