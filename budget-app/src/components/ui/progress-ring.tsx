@@ -39,9 +39,8 @@ export function ProgressRing({ value, tone, size = 84, strokeWidth = 8, label, c
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
-          strokeDashoffset={offset}
           className={cn("ring-draw", toneStyles[tone].stroke)}
-          style={{ ["--ring-length" as string]: `${circumference}px` }}
+          style={{ strokeDashoffset: offset, ["--ring-length" as string]: `${circumference}px` }}
         />
       </svg>
       <div className="absolute inset-0 grid place-items-center">{children}</div>

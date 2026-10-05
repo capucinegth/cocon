@@ -1,60 +1,76 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { ChoiceChip } from "@/components/ui/choice-chip";
+import { AmountInput, FormField, TextInput } from "@/components/ui/form";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
 import { getAccount, quickAddAccountIds } from "@/config/accounts";
-import { expenseCategoryIds, getCategory, incomeCategoryIds } from "@/config/categories";
+import { isExpenseCategory } from "@/config/categories";
 import { cn } from "@/lib/cn";
 import { addDays } from "@/lib/dates";
-import { formatMoney, parseAmountInput } from "@/lib/format";
+import { formatMoney, formatPercent, parseAmountInput } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
-import { useUI } from "@/store/ui-store";
-import type { AccountId, CategoryId } from "@/types/finance";
+import { useUI, type AddPreset } from "@/store/ui-store";
+import type { AccountId, CategoryId, Recurrence, TransactionKind } from "@/types/finance";
 
-type Kind = "expense" | "income";
 type DateChoice = "today" | "yesterday" | "other";
 
-/** Garde uniquement chiffres + une virgule, 2 décimales max. */
-function sanitizeAmount(raw: string): string {
-  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
-  const [units = "", ...rest] = cleaned.split(",");
-  const trimmedUnits = units.replace(/^0+(?=\d)/, "").slice(0, 6);
-  return rest.length ? `${trimmedUnits || "0"},${rest.join("").slice(0, 2)}` : trimmedUnits;
-}
+const kindCopy: Record<TransactionKind, { label: string; placeholder: string; done: string }> = {
+  expense: { label: "Dépense", placeholder: "Ex. Carrefour, dîner chez Léa…", done: "Dépense ajoutée" },
+  income: { label: "Revenu", placeholder: "Ex. Salaire, remboursement…", done: "Revenu ajouté" },
+  saving: { label: "Épargne", placeholder: "Ex. Virement du mois", done: "Épargne ajoutée" },
+};
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <fieldset className="min-w-0">
-      <legend className="mb-2.5 text-sm font-semibold text-muted">{label}</legend>
-      {children}
-    </fieldset>
-  );
-}
+const recurrenceOptions: { value: Recurrence; label: string }[] = [
+  { value: "none", label: "Une fois" },
+  { value: "weekly", label: "Chaque semaine" },
+  { value: "monthly", label: "Chaque mois" },
+];
 
-function AddTransactionForm({ onDone }: { onDone: (message: string) => void }) {
-  const { today, addTransaction } = useBudget();
-  const [kind, setKind] = useState<Kind>("expense");
+function AddTransactionForm({ preset }: { preset: AddPreset }) {
+  const { today, categories, goals, addTransaction, removeTransaction } = useBudget();
+  const { closeSheet, showToast, highlight } = useUI();
+
+  const [kind, setKind] = useState<TransactionKind>(preset.kind ?? "expense");
   const [amountText, setAmountText] = useState("");
+  const [label, setLabel] = useState("");
   const [categoryId, setCategoryId] = useState<CategoryId | null>(null);
+  const [goalId, setGoalId] = useState<string | null>(preset.goalId ?? null);
   const [accountId, setAccountId] = useState<AccountId>("courant");
   const [dateChoice, setDateChoice] = useState<DateChoice>("today");
   const [otherDate, setOtherDate] = useState(addDays(today, -2));
-  const [note, setNote] = useState("");
+  const [recurrence, setRecurrence] = useState<Recurrence>("none");
 
   const amount = parseAmountInput(amountText);
   const date = dateChoice === "today" ? today : dateChoice === "yesterday" ? addDays(today, -1) : otherDate;
-  const canSubmit = amount > 0 && categoryId !== null;
-  const categoryIds = kind === "expense" ? expenseCategoryIds : incomeCategoryIds;
+  const categoryOptions = categories.filter((c) => (kind === "income" ? c.group === "revenus" : isExpenseCategory(c)));
+  const needsCategory = kind !== "saving";
+  const canSubmit = amount > 0 && (!needsCategory || categoryId !== null);
+  const signed = kind === "income" ? amount : -amount;
+  const copy = kindCopy[kind];
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!canSubmit || categoryId === null) return;
-    addTransaction({ amount, kind, categoryId, accountId, date, note });
-    onDone(kind === "expense" ? "Dépense ajoutée" : "Revenu ajouté");
+    if (!canSubmit) return;
+    const transaction = addTransaction({
+      amount,
+      kind,
+      categoryId: kind === "saving" ? "epargne" : (categoryId ?? "autres"),
+      goalId: kind === "saving" ? (goalId ?? undefined) : undefined,
+      accountId,
+      date,
+      label,
+      recurrence,
+    });
+    closeSheet();
+    highlight(transaction.id);
+    showToast(`${copy.done} · ${formatMoney(signed, { sign: "always" })}`, {
+      label: "Annuler",
+      onAction: () => removeTransaction(transaction),
+    });
   }
 
   return (
@@ -67,81 +83,72 @@ function AddTransactionForm({ onDone }: { onDone: (message: string) => void }) {
             setKind(next);
             setCategoryId(null);
           }}
-          options={[
-            { value: "expense", label: "Dépense" },
-            { value: "income", label: "Revenu" },
-          ]}
+          options={(Object.keys(kindCopy) as TransactionKind[]).map((value) => ({ value, label: kindCopy[value].label }))}
           className="w-full"
         />
 
-        {/* Montant — l'élément principal, saisi en premier */}
-        <label className="flex items-baseline justify-center gap-2 rounded-3xl bg-canvas px-4 py-7">
-          <span className="sr-only">Montant en euros</span>
-          <span aria-hidden className="text-3xl font-semibold text-muted">
-            {kind === "expense" ? "−" : "+"}
+        <AmountInput label="Montant en euros" value={amountText} onChange={setAmountText} prefix={kind === "income" ? "+" : "−"} autoFocus />
+
+        <label className="block">
+          <span className="mb-2.5 block text-sm font-semibold text-muted">
+            Description <span className="font-medium">(facultatif)</span>
           </span>
-          {/* Le champ prend exactement la largeur de son texte grâce à un « miroir » invisible. */}
-          <span className="inline-grid text-[52px] font-semibold leading-none tracking-tight">
-            <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-pre">
-              {amountText || "0"}
-            </span>
-            <input
-              data-autofocus
-              size={1}
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="0"
-              value={amountText}
-              onChange={(event) => setAmountText(sanitizeAmount(event.target.value))}
-              className="col-start-1 row-start-1 w-full min-w-0 bg-transparent text-center outline-none placeholder:text-ink/20"
-            />
-          </span>
-          <span aria-hidden className="text-3xl font-semibold">
-            €
-          </span>
+          <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder={copy.placeholder} maxLength={40} />
         </label>
 
-        <Field label="Catégorie">
-          <div className="grid grid-cols-4 gap-2">
-            {categoryIds.map((id) => {
-              const category = getCategory(id);
-              const selected = id === categoryId;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setCategoryId(id)}
-                  className={cn(
-                    "flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 transition-all duration-200 active:scale-[0.96]",
-                    selected ? "bg-ink text-white" : "bg-canvas hover:bg-blush-50",
-                  )}
-                >
-                  <CategoryBadge emoji={category.emoji} tone={category.tone} size="sm" />
-                  <span className="w-full truncate text-center text-[12px] font-semibold">
-                    {category.shortLabel ?? category.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Field>
+        {kind === "saving" ? (
+          <FormField label="Vers quel objectif ?">
+            <div className="flex flex-col gap-2">
+              {goals.map((goal) => {
+                const selected = goal.id === goalId;
+                return (
+                  <button
+                    key={goal.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setGoalId(selected ? null : goal.id)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-2xl p-3 text-left transition-all duration-200 active:scale-[0.99]",
+                      selected ? "bg-ink text-white" : "bg-canvas hover:bg-blush-50",
+                    )}
+                  >
+                    <CategoryBadge emoji={goal.emoji} tone={goal.tone} size="sm" />
+                    <span className="min-w-0 flex-1 break-words text-[15px] font-semibold">{goal.label}</span>
+                    <span className={cn("text-[13px] font-medium", selected ? "text-white/80" : "text-muted")}>
+                      {formatPercent(goal.saved / goal.target)}
+                    </span>
+                  </button>
+                );
+              })}
+              <p className="text-[13px] text-muted">Sans objectif choisi, l&apos;épargne reste « libre ».</p>
+            </div>
+          </FormField>
+        ) : (
+          <FormField label="Catégorie">
+            <div className="grid grid-cols-4 gap-2">
+              {categoryOptions.map((category) => {
+                const selected = category.id === categoryId;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setCategoryId(category.id)}
+                    className={cn(
+                      "flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 transition-all duration-200 active:scale-[0.96]",
+                      selected ? "bg-ink text-white" : "bg-canvas hover:bg-blush-50",
+                    )}
+                  >
+                    <CategoryBadge emoji={category.emoji} tone={category.tone} size="sm" />
+                    <span className="line-clamp-2 w-full break-words text-center text-[12px] font-semibold leading-tight">{category.shortLabel ?? category.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </FormField>
+        )}
 
-        <Field label="Compte">
-          <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
-            {quickAddAccountIds.map((id) => {
-              const account = getAccount(id);
-              return (
-                <ChoiceChip key={id} selected={id === accountId} onClick={() => setAccountId(id)}>
-                  <span aria-hidden>{account.emoji}</span>
-                  {account.label}
-                </ChoiceChip>
-              );
-            })}
-          </div>
-        </Field>
-
-        <Field label="Date">
+        <FormField label="Date">
           <div className="flex flex-wrap gap-2">
             <ChoiceChip selected={dateChoice === "today"} onClick={() => setDateChoice("today")}>
               Aujourd&apos;hui
@@ -154,38 +161,45 @@ function AddTransactionForm({ onDone }: { onDone: (message: string) => void }) {
             </ChoiceChip>
           </div>
           {dateChoice === "other" && (
-            <input
+            <TextInput
               type="date"
               aria-label="Choisir une date"
               value={otherDate}
               max={today}
               onChange={(event) => event.target.value && setOtherDate(event.target.value)}
-              className="mt-3 h-12 w-full animate-fade rounded-2xl bg-canvas px-4 text-[15px] font-medium outline-none focus:ring-2 focus:ring-blush-300"
+              className="mt-3 animate-fade font-medium"
             />
           )}
-        </Field>
+        </FormField>
 
-        <label className="block">
-          <span className="mb-2.5 block text-sm font-semibold text-muted">
-            Note <span className="font-medium">(facultatif)</span>
-          </span>
-          <input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder={kind === "expense" ? "Ex. Dîner chez Léa" : "Ex. Remboursement"}
-            maxLength={60}
-            className="h-12 w-full rounded-2xl bg-canvas px-4 text-[15px] outline-none placeholder:text-muted/70 focus:ring-2 focus:ring-blush-300"
-          />
-        </label>
+        <FormField label="Récurrence">
+          <div className="flex flex-wrap gap-2">
+            {recurrenceOptions.map((option) => (
+              <ChoiceChip key={option.value} selected={recurrence === option.value} onClick={() => setRecurrence(option.value)}>
+                {option.label}
+              </ChoiceChip>
+            ))}
+          </div>
+        </FormField>
+
+        <FormField label="Compte">
+          <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
+            {quickAddAccountIds.map((id) => {
+              const account = getAccount(id);
+              return (
+                <ChoiceChip key={id} selected={id === accountId} onClick={() => setAccountId(id)}>
+                  <span aria-hidden>{account.emoji}</span>
+                  {account.label}
+                </ChoiceChip>
+              );
+            })}
+          </div>
+        </FormField>
       </div>
 
       <div className="sticky bottom-0 bg-surface/95 px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 backdrop-blur">
         <Button type="submit" size="lg" disabled={!canSubmit} className="w-full">
-          {canSubmit
-            ? `Ajouter ${formatMoney(kind === "expense" ? -amount : amount, { sign: "always" })}`
-            : amount > 0
-              ? "Choisis une catégorie"
-              : "Saisis un montant"}
+          {canSubmit ? `Ajouter ${formatMoney(signed, { sign: "always" })}` : amount > 0 ? "Choisis une catégorie" : "Saisis un montant"}
         </Button>
       </div>
     </form>
@@ -194,17 +208,12 @@ function AddTransactionForm({ onDone }: { onDone: (message: string) => void }) {
 
 /** Feuille d'ajout rapide, ouverte depuis n'importe quel écran. */
 export function AddTransactionSheet() {
-  const { isAddOpen, addSession, closeAdd, showToast } = useUI();
+  const { sheet, isSheetOpen, sheetSession, closeSheet } = useUI();
+  const active = sheet?.type === "add" ? sheet : null;
 
   return (
-    <Sheet open={isAddOpen} onClose={closeAdd} title="Nouvelle opération">
-      <AddTransactionForm
-        key={addSession}
-        onDone={(message) => {
-          closeAdd();
-          showToast(message);
-        }}
-      />
+    <Sheet open={isSheetOpen && active !== null} onClose={closeSheet} title="Nouvelle opération">
+      {active && <AddTransactionForm key={sheetSession} preset={active.preset} />}
     </Sheet>
   );
 }

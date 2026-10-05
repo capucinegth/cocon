@@ -32,7 +32,10 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      onClose={() => {
+        // Fermeture native (touche Échap) : on synchronise l'état. Ignorée si c'est nous qui fermons.
+        if (open) onClose();
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

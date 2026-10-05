@@ -7,10 +7,12 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   label: string;
+  /** « sm » : quatre options côte à côte sur un écran de 390 px. */
+  size?: "sm" | "md";
   className?: string;
 }
 
-export function SegmentedControl<T extends string>({ options, value, onChange, label, className }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ options, value, onChange, label, size = "md", className }: SegmentedControlProps<T>) {
   return (
     <div role="radiogroup" aria-label={label} className={cn("inline-flex rounded-full bg-blush-50 p-1", className)}>
       {options.map((option) => {
@@ -23,7 +25,8 @@ export function SegmentedControl<T extends string>({ options, value, onChange, l
             aria-checked={selected}
             onClick={() => onChange(option.value)}
             className={cn(
-              "h-10 flex-1 rounded-full px-4 text-[15px] font-semibold whitespace-nowrap transition-all duration-200",
+              "h-11 flex-1 rounded-full font-semibold whitespace-nowrap transition-all duration-200",
+              size === "sm" ? "px-2 text-sm sm:px-4" : "px-4 text-[15px]",
               selected ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink",
             )}
           >

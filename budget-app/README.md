@@ -1,10 +1,11 @@
-# Cocon — budget mensuel (prototype)
+# Cocon — budget mensuel (prototype V2)
 
 Application web personnelle de gestion de budget, pensée mobile d'abord.
-Question centrale : **« Combien ai-je réellement à disposition, et combien puis-je dépenser sans dépasser mon budget ? »**
+Question centrale : **« Combien puis-je réellement dépenser aujourd'hui sans mettre mon budget en danger ? »**
 
-> Étape actuelle : **prototype d'interface uniquement**. Données fictives, rien n'est enregistré,
-> aucune banque n'est connectée. L'ajout d'une dépense fonctionne en mémoire (perdu au rechargement).
+> Étape actuelle : **prototype d'interface**. Données fictives, rien n'est enregistré,
+> aucune banque n'est connectée. Les ajouts (opérations, catégories, objectifs) fonctionnent
+> en mémoire et disparaissent au rechargement de la page.
 
 ## Lancer le projet
 
@@ -20,47 +21,66 @@ Stack : Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, icônes L
 
 ## Écrans
 
-| Route           | Écran                                                                 |
-| --------------- | --------------------------------------------------------------------- |
-| `/`             | Accueil : « Il te reste », chiffres clés, dépenses, à venir, objectif |
-| `/budget`       | Revenus, charges fixes, dépenses variables, épargne, reste disponible |
-| `/transactions` | Liste par jour, recherche, filtres, opérations prévues                |
-| `/objectifs`    | Objectifs d'épargne avec anneaux de progression                       |
-| `/statistiques` | « Ce mois-ci » (catégories, comparaison) / « Tendances » (6 mois)     |
-| `/parametres`   | Réglages (connexions et export marqués « Bientôt »)                   |
+| Route           | Écran                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `/`             | Accueil : disponible réel + par jour + état du budget, navigation entre les mois, repères, calcul « Ce qu'il te reste », à venir, transactions récentes, calendrier du mois |
+| `/budget`       | Budget du mois : chiffres clés, répartition des revenus (anneau), catégories avec prévu / dépensé / reste, ajout de catégorie |
+| `/transactions` | Recherche, filtres type / mois / catégorie, liste par jour, opérations prévues, détail et suppression (avec annulation) |
+| `/objectifs`    | Mes objectifs : progression, rythme, date estimée, verser, créer un objectif                   |
+| `/statistiques` | Ce mois-ci (dépenses jour par jour, répartition, comparaison) · Solde · Tendances (6 mois)     |
+| `/parametres`   | Compte, Préférences (mode discret fonctionnel), Catégories, Budget, Notifications, Sécurité, À propos |
 
-Le bouton **+ Ajouter** (flottant sur mobile, dans la barre latérale sur ordinateur) ouvre l'ajout rapide.
+Le bouton **+ Ajouter** (flottant sur mobile, dans la barre latérale sur ordinateur) ouvre l'ajout
+rapide : dépense, revenu ou épargne (vers un objectif), avec description, catégorie, date, récurrence et compte.
+
+## Données de démonstration
+
+Au 13 septembre 2026 (date figée dans `src/config/app.ts`), tout est cohérent entre les écrans :
+
+```
+revenus 2 150 € − charges fixes 840 € − dépenses du quotidien 366,80 € − épargne 300 €
+= 643,20 € disponibles  →  ≈ 35,73 € / jour pour 18 jours
+```
+
+Août 2026 est complet : il sert à la navigation entre les mois, au filtre par mois et à la
+comparaison « même date, mois précédent ». Le détail est commenté dans `src/data/demo-data.ts`.
 
 ## Structure
 
 ```
 src/
-  app/                 Routes Next.js (fines : elles affichent un écran)
-  features/<écran>/    Composants propres à chaque écran
-  components/ui/       Design system : Card, Button, ProgressBar, Sheet, StatusPill…
-  components/layout/   Coque : barre latérale, barre du bas, bouton flottant, en-têtes
-  components/charts/   Graphiques SVG légers (colonnes, courbe, barres)
-  config/              Catégories, comptes, navigation, couleurs par famille, nom de l'app
-  data/                Données de démo + point d'entrée unique getInitialBudgetData()
-  lib/                 Formatage (€, dates en français), calculs d'affichage
-  store/               État client (données du mois, feuille d'ajout, notifications)
-  types/               Modèle de données (proche des futures tables)
+  app/                  Routes Next.js (fines : elles affichent un écran)
+  features/<écran>/     Composants propres à chaque écran (+ feuilles d'ajout)
+  components/ui/        Design system : Card, Button, Money, Sheet, SegmentedControl, formulaires…
+  components/finance/   Composants métier partagés (ligne d'opération, calcul « Ce qu'il te reste »)
+  components/calendar/  Calendrier du mois
+  components/charts/    Graphiques SVG légers (colonnes, courbe, anneau, barres)
+  components/layout/    Coque : barre latérale, barre du bas, bouton flottant, en-têtes, toasts
+  config/               Catégories par défaut, comptes, navigation, couleurs, réglages de l'app
+  data/                 Données de démo + point d'entrée unique getInitialBudgetData()
+  lib/                  Calculs (budget.ts, timeline.ts, goals.ts), formatage français, texte
+  store/                État client : données (budget-store) et interface (ui-store)
+  types/                Modèle de données (proche des futures tables)
 ```
 
 ## Personnaliser
 
-- **Couleurs, arrondis, ombres, animations** : `src/app/globals.css` (bloc `@theme`).
+- **Couleurs, contrastes, arrondis, ombres, animations** : `src/app/globals.css` (bloc `@theme`).
 - **Familles de couleur → classes** (rose, lilas, sauge, pêche) : `src/config/tones.ts`.
-- **Catégories** (libellé, emoji, couleur, groupe) : `src/config/categories.ts`.
-- **Navigation** (ordre, libellés, icônes) : `src/config/navigation.ts`.
-- **Nom, slogan, date de démo** : `src/config/app.ts`.
-- **Chiffres de démo** : `src/data/demo-data.ts` (les totaux sont recalculés automatiquement).
+- **Catégories par défaut** : `src/config/categories.ts`.
+- **Navigation** : `src/config/navigation.ts`.
+- **Nom, date de démo, seuils (état du budget, dépense importante)** : `src/config/app.ts`.
 
-## Préparé pour la suite
+## Accessibilité
 
-- `src/data/index.ts` est le seul endroit qui fournit les données : on y branchera Supabase
-  sans toucher aux écrans.
-- `src/store/budget-store.tsx` expose `addTransaction` / `resetDemo` : ces actions deviendront
-  des écritures en base.
-- Les types de `src/types/finance.ts` décrivent déjà transactions, prélèvements prévus,
-  budget par catégorie et objectifs.
+- Texte secondaire `#74666B` (≥ 4,8:1 sur tous les fonds clairs) ; le gris d'origine `#8A7C81`
+  reste disponible pour le décor (`muted-soft`).
+- Couleurs des graphiques validées pour le daltonisme ; formes distinctes dans le calendrier.
+- Focus visible, cibles tactiles ≥ 40 px, tableaux de données cachés pour les lecteurs d'écran,
+  animations désactivées si « réduire les animations » est activé.
+
+## Préparé pour la suite (non implémenté)
+
+Supabase, authentification, synchronisation bancaire, notifications réelles, PWA :
+`src/data/index.ts` est le seul point d'entrée des données et le store expose déjà les actions
+(`addTransaction`, `removeTransaction`, `addCategory`, `addGoal`…) qui deviendront des écritures en base.

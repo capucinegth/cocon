@@ -1,65 +1,77 @@
 "use client";
 
-import { ArrowDownLeft, ArrowUpRight, Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, Plus, Search, Tag, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { TransactionRow } from "@/components/finance/transaction-row";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChoiceChip } from "@/components/ui/choice-chip";
-import { getCategory } from "@/config/categories";
-import { groupByDay, upcomingOfMonth } from "@/lib/budget";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Money } from "@/components/ui/money";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SelectPill } from "@/components/ui/select-pill";
+import { getAccount } from "@/config/accounts";
+import { availableMonths, groupByDay, monthTransactions, monthUpcoming, signedAmount, total } from "@/lib/budget";
 import { formatDayHeading, formatMonth, formatShortDate } from "@/lib/dates";
-import { formatMoney, roundCents } from "@/lib/format";
-import { useBudget } from "@/store/budget-store";
+import { normalizeText } from "@/lib/text";
+import { useBudget, useCategoryLookup } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import type { TransactionKind } from "@/types/finance";
-import { TransactionRow } from "./transaction-row";
 
-type Filter = "all" | TransactionKind;
+type KindFilter = "all" | TransactionKind;
 
-const filters: { value: Filter; label: string }[] = [
+const kindFilters: { value: KindFilter; label: string }[] = [
   { value: "all", label: "Tout" },
   { value: "expense", label: "Dépenses" },
   { value: "income", label: "Revenus" },
   { value: "saving", label: "Épargne" },
 ];
 
-/** Recherche insensible à la casse et aux accents. */
-const normalize = (text: string) =>
-  text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
 export function TransactionsScreen() {
   const data = useBudget();
-  const { openAdd } = useUI();
-  const [filter, setFilter] = useState<Filter>("all");
+  const categoryOf = useCategoryLookup();
+  const { openAdd, openTransaction, highlightId } = useUI();
+  const [kind, setKind] = useState<KindFilter>("all");
+  const [month, setMonth] = useState(data.currentMonth);
+  const [categoryId, setCategoryId] = useState("all");
   const [query, setQuery] = useState("");
 
-  const q = normalize(query.trim());
-  const matches = (label: string, categoryLabel: string) =>
-    !q || normalize(label).includes(q) || normalize(categoryLabel).includes(q);
+  const months = useMemo(() => availableMonths(data), [data]);
+  const q = normalizeText(query.trim());
+  const matches = (label: string, id: string) =>
+    (categoryId === "all" || categoryId === id) &&
+    (!q || normalizeText(label).includes(q) || normalizeText(categoryOf(id).label).includes(q));
 
-  const visible = data.transactions.filter(
-    (t) => (filter === "all" || t.kind === filter) && matches(t.label, getCategory(t.categoryId).label),
-  );
+  const ofMonth = monthTransactions(data, month);
+  const visible = ofMonth.filter((t) => (kind === "all" || t.kind === kind) && matches(t.label, t.categoryId));
   const groups = groupByDay(visible);
-  const upcoming = upcomingOfMonth(data).filter(
-    (u) => (filter === "all" || filter === "expense") && matches(u.label, getCategory(u.categoryId).label),
-  );
+  const upcoming = monthUpcoming(data, month).filter((u) => (kind === "all" || kind === "expense") && matches(u.label, u.categoryId));
 
-  const incoming = roundCents(data.transactions.filter((t) => t.kind === "income").reduce((acc, t) => acc + t.amount, 0));
-  const outgoing = roundCents(data.transactions.filter((t) => t.kind !== "income").reduce((acc, t) => acc + t.amount, 0));
+  const incoming = total(ofMonth.filter((t) => t.kind === "income").map((t) => t.amount));
+  const outgoing = total(ofMonth.filter((t) => t.kind !== "income").map((t) => t.amount));
+  const filtersActive = kind !== "all" || categoryId !== "all" || q.length > 0;
+  const usedCategoryIds = new Set([...ofMonth.map((t) => t.categoryId), ...data.upcoming.map((u) => u.categoryId)]);
+  const categoryOptions = [
+    { value: "all", label: "Toutes les catégories" },
+    ...data.categories
+      .filter((c) => usedCategoryIds.has(c.id) || c.id === categoryId)
+      .map((c) => ({ value: c.id, label: `${c.emoji} ${c.label}` })),
+  ];
+
+  function resetFilters() {
+    setKind("all");
+    setCategoryId("all");
+    setQuery("");
+  }
 
   return (
     <>
       <PageHeader
         title="Transactions"
-        subtitle={formatMonth(data.today)}
+        subtitle={formatMonth(month)}
         actions={
           <div className="hidden lg:block">
-            <Button onClick={openAdd}>
+            <Button onClick={() => openAdd()}>
               <Plus size={18} strokeWidth={2.4} aria-hidden />
               Ajouter
             </Button>
@@ -67,8 +79,8 @@ export function TransactionsScreen() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start">
+        <div className="flex min-w-0 flex-col gap-5">
           {/* Recherche + filtres */}
           <div className="flex animate-rise flex-col gap-3">
             <label className="relative block">
@@ -79,37 +91,57 @@ export function TransactionsScreen() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Rechercher un nom, une catégorie…"
-                className="h-12 w-full rounded-full bg-surface pl-11 pr-4 text-[15px] shadow-card outline-none placeholder:text-muted focus:ring-2 focus:ring-blush-300"
+                className="h-12 w-full rounded-full bg-surface pl-11 pr-4 text-[15px] shadow-card outline-none ring-1 ring-ink/5 focus:ring-2 focus:ring-blush-300"
               />
             </label>
-            <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label="Filtrer">
-              {filters.map((f) => (
-                <ChoiceChip key={f.value} selected={filter === f.value} onClick={() => setFilter(f.value)}>
-                  {f.label}
-                </ChoiceChip>
-              ))}
+            <SegmentedControl label="Type d'opération" value={kind} onChange={setKind} options={kindFilters} size="sm" className="w-full sm:w-auto" />
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+              <SelectPill
+                label="Mois"
+                icon={CalendarDays}
+                value={month}
+                onChange={setMonth}
+                options={months.map((m) => ({ value: m, label: formatMonth(m) }))}
+                active={month !== data.currentMonth}
+              />
+              <SelectPill label="Catégorie" icon={Tag} value={categoryId} onChange={setCategoryId} options={categoryOptions} active={categoryId !== "all"} />
             </div>
           </div>
 
-          {/* Résumé compact (mobile) */}
-          <div className="grid animate-rise grid-cols-2 gap-3 lg:hidden">
+          {/* Résumé compact (mobile et tablette) */}
+          <div className="grid animate-rise grid-cols-2 gap-3 xl:hidden">
             <div className="rounded-3xl bg-sage-50 px-4 py-3">
-              <p className="text-[13px] font-medium text-muted">Entrées</p>
-              <p className="text-lg font-semibold">{formatMoney(incoming, { sign: "always" })}</p>
+              <p className="text-[13px] font-medium text-ink-soft">Entrées</p>
+              <Money value={incoming} sign="always" className="text-lg font-semibold" />
             </div>
             <div className="rounded-3xl bg-peach-50 px-4 py-3">
-              <p className="text-[13px] font-medium text-muted">Sorties</p>
-              <p className="text-lg font-semibold">{formatMoney(-outgoing)}</p>
+              <p className="text-[13px] font-medium text-ink-soft">Sorties</p>
+              <Money value={-outgoing} className="text-lg font-semibold" />
             </div>
+          </div>
+
+          <div className="flex min-h-9 items-center justify-between gap-3 px-1 text-sm text-muted" aria-live="polite">
+            <span>
+              {visible.length} opération{visible.length > 1 ? "s" : ""}
+              {upcoming.length > 0 && ` · ${upcoming.length} à venir`}
+            </span>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex h-10 items-center gap-1 rounded-full px-3 font-semibold text-blush-700 transition-colors hover:bg-blush-50"
+              >
+                <X size={14} aria-hidden />
+                Effacer les filtres
+              </button>
+            )}
           </div>
 
           {upcoming.length > 0 && (
             <section className="animate-rise">
               <div className="mb-2 flex items-baseline justify-between px-1">
                 <h2 className="text-sm font-semibold text-muted">À venir</h2>
-                <span className="tabular text-sm text-muted">
-                  {formatMoney(-upcoming.reduce((acc, u) => acc + u.amount, 0))}
-                </span>
+                <Money value={-total(upcoming.map((u) => u.amount))} className="tabular text-sm text-muted" />
               </div>
               <Card padded={false} className="p-2">
                 <ul>
@@ -117,11 +149,10 @@ export function TransactionsScreen() {
                     <TransactionRow
                       key={u.id}
                       label={u.label}
-                      amount={u.amount}
-                      kind="expense"
-                      categoryId={u.categoryId}
-                      accountId={u.accountId}
-                      scheduledLabel={`Prévu le ${formatShortDate(u.date)}`}
+                      category={categoryOf(u.categoryId)}
+                      subtitle={`Prévu le ${formatShortDate(u.date)} · ${categoryOf(u.categoryId).label}`}
+                      amount={-u.amount}
+                      planned
                     />
                   ))}
                 </ul>
@@ -133,58 +164,70 @@ export function TransactionsScreen() {
             <section key={group.date} className="animate-rise">
               <div className="mb-2 flex items-baseline justify-between px-1">
                 <h2 className="text-sm font-semibold text-muted">{formatDayHeading(group.date, data.today)}</h2>
-                <span className="tabular text-sm text-muted">{formatMoney(group.net, { sign: "always" })}</span>
+                <Money value={group.net} sign="always" className="tabular text-sm text-muted" />
               </div>
               <Card padded={false} className="p-2">
                 <ul>
-                  {group.items.map((t) => (
-                    <TransactionRow
-                      key={t.id}
-                      label={t.label}
-                      amount={t.amount}
-                      kind={t.kind}
-                      categoryId={t.categoryId}
-                      accountId={t.accountId}
-                    />
-                  ))}
+                  {group.items.map((t) => {
+                    const category = categoryOf(t.categoryId);
+                    const goal = data.goals.find((g) => g.id === t.goalId);
+                    return (
+                      <TransactionRow
+                        key={t.id}
+                        label={t.label}
+                        category={category}
+                        subtitle={[goal ? `Épargne · ${goal.label}` : category.label, t.accountId !== "courant" ? getAccount(t.accountId).label : null].filter(Boolean).join(" · ")}
+                        amount={signedAmount(t)}
+                        recurring={t.recurrence !== undefined && t.recurrence !== "none"}
+                        highlighted={t.id === highlightId}
+                        onClick={() => openTransaction(t)}
+                      />
+                    );
+                  })}
                 </ul>
               </Card>
             </section>
           ))}
 
           {groups.length === 0 && upcoming.length === 0 && (
-            <Card className="text-center">
-              <p className="text-3xl" aria-hidden>
-                🔍
-              </p>
-              <p className="mt-2 font-semibold">Aucune transaction trouvée</p>
-              <p className="mt-1 text-sm text-muted">Essaie un autre mot ou un autre filtre.</p>
+            <Card>
+              <EmptyState emoji="🔍" title="Aucune transaction trouvée">
+                Essaie un autre mot, un autre mois ou une autre catégorie.
+              </EmptyState>
             </Card>
           )}
         </div>
 
         {/* Résumé latéral (desktop) */}
-        <aside className="hidden animate-rise flex-col gap-4 lg:sticky lg:top-8 lg:flex">
+        <aside className="hidden animate-rise flex-col gap-4 xl:sticky xl:top-8 xl:flex">
           <Card>
-            <h2 className="text-[17px] font-semibold tracking-tight">Ce mois-ci</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight">{formatMonth(month)}</h2>
             <dl className="mt-5 flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-2xl bg-sage-50">
+                <dt className="flex flex-1 items-center gap-3 text-[15px] text-muted">
+                  <span className="grid size-10 place-items-center rounded-2xl bg-sage-50">
                   <ArrowDownLeft size={18} className="text-sage-700" aria-hidden />
                 </span>
-                <dt className="flex-1 text-[15px] text-muted">Entrées</dt>
-                <dd className="tabular font-semibold">{formatMoney(incoming, { sign: "always" })}</dd>
+                  Entrées
+                </dt>
+                <dd>
+                  <Money value={incoming} sign="always" className="tabular font-semibold" />
+                </dd>
               </div>
               <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-2xl bg-peach-50">
+                <dt className="flex flex-1 items-center gap-3 text-[15px] text-muted">
+                  <span className="grid size-10 place-items-center rounded-2xl bg-peach-50">
                   <ArrowUpRight size={18} className="text-peach-700" aria-hidden />
                 </span>
-                <dt className="flex-1 text-[15px] text-muted">Sorties</dt>
-                <dd className="tabular font-semibold">{formatMoney(-outgoing)}</dd>
+                  Sorties
+                </dt>
+                <dd>
+                  <Money value={-outgoing} className="tabular font-semibold" />
+                </dd>
               </div>
             </dl>
             <p className="mt-5 rounded-2xl bg-canvas px-4 py-3 text-[13px] leading-relaxed text-muted">
-              {data.transactions.length} opérations ce mois-ci. Les sorties incluent ton virement d&apos;épargne.
+              {ofMonth.length} opérations ce mois-ci. Les sorties incluent ton épargne. Touche une ligne pour voir le détail.
             </p>
           </Card>
         </aside>

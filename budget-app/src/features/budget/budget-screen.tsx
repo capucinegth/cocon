@@ -1,147 +1,103 @@
 "use client";
 
-import { Banknote, House, Sprout, ShoppingBasket } from "lucide-react";
+import { Banknote, Plus, ReceiptText, Sprout, Wallet } from "lucide-react";
+import { useMemo } from "react";
+import { RemainingBreakdown } from "@/components/finance/remaining-breakdown";
 import { PageHeader } from "@/components/layout/page-header";
-import { categoryGroups, getCategory } from "@/config/categories";
-import { allocateSavings, getGroupUsage } from "@/lib/budget";
-import { formatMonth } from "@/lib/dates";
-import { roundCents } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Money } from "@/components/ui/money";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { getExpenseUsages, total } from "@/lib/budget";
+import { formatMonthName } from "@/lib/dates";
 import { useBudget } from "@/store/budget-store";
-import { BudgetGroupCard } from "./budget-group-card";
-import { BudgetLine } from "./budget-line";
-import { RemainingCard } from "./remaining-card";
+import { useUI } from "@/store/ui-store";
+import { BudgetSplitCard } from "./budget-split-card";
+import { CategoryBudgetRow } from "./category-budget-row";
+import { IncomeSavingsCard } from "./income-savings-card";
 
 export function BudgetScreen() {
   const data = useBudget();
-  const { summary, goals } = data;
-
-  const income = getGroupUsage("revenus", data);
-  const fixed = getGroupUsage("fixes", data);
-  const variable = getGroupUsage("variables", data);
-
-  const savingLines = allocateSavings(goals, summary.saved);
-  const savingPlanned = goals.reduce((acc, goal) => acc + goal.monthlyContribution, 0);
+  const { summary, currentMonth } = data;
+  const { openCategorySheet } = useUI();
+  const usages = useMemo(() => getExpenseUsages(data, currentMonth), [data, currentMonth]);
+  const plannedTotal = total(usages.map((u) => u.planned));
+  const monthName = formatMonthName(currentMonth).toLowerCase();
 
   return (
     <>
-      <PageHeader title="Budget" subtitle={formatMonth(data.today)} />
+      <PageHeader
+        title={`Budget de ${monthName}`}
+        subtitle="Ce qui est prévu, dépensé et encore disponible"
+        actions={
+          <div className="hidden sm:block">
+            <Button variant="soft" onClick={openCategorySheet}>
+              <Plus size={18} strokeWidth={2.4} aria-hidden />
+              Catégorie
+            </Button>
+          </div>
+        }
+      />
 
-      {/* Mobile : une colonne dans l'ordre logique. Desktop : deux colonnes équilibrées. */}
-      <div className="flex flex-col gap-4 sm:gap-5 lg:grid lg:grid-cols-2 lg:items-start">
-        <div className="flex flex-col gap-4 sm:gap-5 max-lg:contents">
-          <BudgetGroupCard
-            className="order-1 animate-rise"
-            title={categoryGroups.revenus.label}
-            description={categoryGroups.revenus.description}
-            icon={Banknote}
-            tone="blush"
-            amount={income.done}
-            planned={income.planned}
-          >
-            {income.lines.map((line) => {
-              const category = getCategory(line.categoryId);
-              return (
-                <BudgetLine
-                  key={line.categoryId}
-                  mode="income"
-                  label={category.label}
-                  emoji={category.emoji}
-                  tone={category.tone}
-                  planned={line.planned}
-                  done={line.done}
-                />
-              );
-            })}
-          </BudgetGroupCard>
+      <div className="grid animate-rise grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard tone="blush" icon={Banknote} label="Revenus" value={<Money value={summary.income} />} caption="Reçus ce mois-ci" />
+        <StatCard
+          tone="peach"
+          icon={ReceiptText}
+          label="Dépenses prévues"
+          value={<Money value={summary.committed} />}
+          caption="Payées ou à venir"
+        />
+        <StatCard tone="sage" icon={Sprout} label="Épargne" value={<Money value={summary.savingsReserved} />} caption="Pour tes objectifs" />
+        <StatCard
+          tone="lilac"
+          icon={Wallet}
+          label="Disponible"
+          value={<Money value={summary.remaining} cents="always" />}
+          caption={
+            <>
+              ≈ <Money value={summary.perDay} cents="always" /> / jour
+            </>
+          }
+          className="bg-linear-to-br from-blush-100 to-lilac-50"
+        />
+      </div>
 
-          <BudgetGroupCard
-            className="order-2 animate-rise [animation-delay:60ms]"
-            title={categoryGroups.fixes.label}
-            description={categoryGroups.fixes.description}
-            icon={House}
-            tone="lilac"
-            amount={roundCents(fixed.done + fixed.upcoming)}
-            planned={fixed.planned}
-          >
-            {fixed.lines.map((line) => {
-              const category = getCategory(line.categoryId);
-              return (
-                <BudgetLine
-                  key={line.categoryId}
-                  mode="fixed"
-                  label={category.label}
-                  emoji={category.emoji}
-                  tone={category.tone}
-                  planned={line.planned}
-                  done={line.done}
-                  upcoming={line.upcoming}
-                  nextDate={line.nextUpcomingDate}
-                />
-              );
-            })}
-          </BudgetGroupCard>
-
-          <BudgetGroupCard
-            className="order-4 animate-rise [animation-delay:180ms]"
-            title={categoryGroups.epargne.label}
-            description={categoryGroups.epargne.description}
-            icon={Sprout}
-            tone="sage"
-            amount={summary.saved}
-            planned={savingPlanned}
-          >
-            {savingLines.map(({ goal, done }) => (
-              <BudgetLine
-                key={goal.id}
-                mode="saving"
-                label={goal.label}
-                emoji={goal.emoji}
-                tone="sage"
-                planned={goal.monthlyContribution}
-                done={done}
-              />
-            ))}
-          </BudgetGroupCard>
+      <div className="mt-4 flex flex-col gap-4 sm:mt-5 sm:gap-5 xl:grid xl:grid-cols-12 xl:items-start">
+        <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-7">
+          <div className="order-1 animate-rise [animation-delay:50ms]">
+            <BudgetSplitCard summary={summary} />
+          </div>
+          <Card className="order-2 animate-rise [animation-delay:100ms]">
+            <SectionHeader
+              title="Tes catégories"
+              subtitle={
+                <>
+                  <Money value={summary.committed} /> sur <Money value={plannedTotal} /> prévus
+                </>
+              }
+              aside={
+                <Button variant="accent" size="sm" onClick={openCategorySheet} className="-mr-2">
+                  <Plus size={17} strokeWidth={2.4} aria-hidden />
+                  Ajouter
+                </Button>
+              }
+            />
+            <ul className="divide-y divide-line">
+              {usages.map((usage) => (
+                <CategoryBudgetRow key={usage.category.id} usage={usage} />
+              ))}
+            </ul>
+          </Card>
         </div>
 
-        <div className="flex flex-col gap-4 sm:gap-5 max-lg:contents">
-          <BudgetGroupCard
-            className="order-3 animate-rise [animation-delay:120ms]"
-            title={categoryGroups.variables.label}
-            description={categoryGroups.variables.description}
-            icon={ShoppingBasket}
-            tone="peach"
-            amount={roundCents(variable.done + variable.upcoming)}
-            planned={variable.planned}
-          >
-            {variable.lines.map((line) => {
-              const category = getCategory(line.categoryId);
-              return (
-                <BudgetLine
-                  key={line.categoryId}
-                  mode="expense"
-                  label={category.label}
-                  emoji={category.emoji}
-                  tone={category.tone}
-                  planned={line.planned}
-                  done={line.done}
-                  upcoming={line.upcoming}
-                  nextDate={line.nextUpcomingDate}
-                />
-              );
-            })}
-          </BudgetGroupCard>
-
-          <div className="order-5 animate-rise [animation-delay:240ms]">
-            <RemainingCard
-              income={summary.income}
-              fixed={roundCents(fixed.done + fixed.upcoming)}
-              variable={roundCents(variable.done + variable.upcoming)}
-              saved={summary.saved}
-              remaining={summary.remaining}
-              perDay={summary.perDay}
-              daysLeft={summary.daysLeft}
-            />
+        <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:sticky xl:top-6 xl:col-span-5">
+          <div className="order-3 animate-rise [animation-delay:150ms]">
+            <RemainingBreakdown summary={summary} />
+          </div>
+          <div className="order-4 animate-rise [animation-delay:200ms]">
+            <IncomeSavingsCard summary={summary} />
           </div>
         </div>
       </div>

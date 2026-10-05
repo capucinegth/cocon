@@ -1,8 +1,9 @@
 import { appConfig } from "@/config/app";
+import { defaultCategories } from "@/config/categories";
 import type {
   BudgetPlan,
+  Category,
   MonthHistoryPoint,
-  PreviousMonthToDate,
   SavingsGoal,
   Transaction,
   UpcomingExpense,
@@ -11,19 +12,20 @@ import {
   demoBudgetPlan,
   demoGoals,
   demoHistory,
-  demoPreviousMonthToDate,
+  demoOpeningBalances,
   demoTransactions,
   demoUpcoming,
 } from "./demo-data";
 
 export interface BudgetData {
   today: string;
+  categories: Category[];
   transactions: Transaction[];
   upcoming: UpcomingExpense[];
   plan: BudgetPlan;
   goals: SavingsGoal[];
   history: MonthHistoryPoint[];
-  previousMonthToDate: PreviousMonthToDate;
+  openingBalances: Record<string, number>;
 }
 
 /**
@@ -34,11 +36,12 @@ export interface BudgetData {
 export function getInitialBudgetData(): BudgetData {
   return {
     today: appConfig.demoToday,
+    categories: defaultCategories,
     transactions: demoTransactions,
     upcoming: demoUpcoming,
     plan: demoBudgetPlan,
     goals: demoGoals,
     history: demoHistory,
-    previousMonthToDate: demoPreviousMonthToDate,
+    openingBalances: demoOpeningBalances,
   };
 }

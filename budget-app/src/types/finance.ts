@@ -7,21 +7,11 @@
 /** Familles de couleurs pastel définies dans globals.css. */
 export type Tone = "blush" | "lilac" | "sage" | "peach";
 
+/** revenus · charges fixes · dépenses du quotidien · épargne */
 export type CategoryGroup = "revenus" | "fixes" | "variables" | "epargne";
 
-export type CategoryId =
-  | "salaire"
-  | "freelance"
-  | "logement"
-  | "energie"
-  | "assurances"
-  | "abonnements"
-  | "courses"
-  | "restaurants"
-  | "shopping"
-  | "transport"
-  | "loisirs"
-  | "epargne";
+/** Identifiant libre : l'utilisateur peut créer ses propres catégories. */
+export type CategoryId = string;
 
 export interface Category {
   id: CategoryId;
@@ -43,6 +33,8 @@ export interface Account {
 
 export type TransactionKind = "expense" | "income" | "saving";
 
+export type Recurrence = "none" | "weekly" | "monthly";
+
 export interface Transaction {
   id: string;
   label: string;
@@ -54,9 +46,12 @@ export interface Transaction {
   /** Date ISO AAAA-MM-JJ. */
   date: string;
   note?: string;
+  recurrence?: Recurrence;
+  /** Objectif alimenté (épargne uniquement). */
+  goalId?: string;
 }
 
-/** Dépense récurrente prévue mais pas encore prélevée. */
+/** Mouvement prévu mais pas encore passé (prélèvement, course planifiée…). */
 export interface UpcomingExpense {
   id: string;
   label: string;
@@ -69,8 +64,8 @@ export interface UpcomingExpense {
 export interface BudgetPlan {
   /** Mois concerné, format AAAA-MM. */
   month: string;
-  /** Montant prévu par catégorie. */
-  planned: Partial<Record<CategoryId, number>>;
+  /** Montant prévu par catégorie (revenus, dépenses et épargne). */
+  planned: Record<CategoryId, number>;
 }
 
 export interface SavingsGoal {
@@ -86,6 +81,7 @@ export interface SavingsGoal {
   deadline?: string;
 }
 
+/** Mois passés dont on ne garde que les totaux (avant le début des transactions détaillées). */
 export interface MonthHistoryPoint {
   /** Format AAAA-MM. */
   month: string;
@@ -93,6 +89,3 @@ export interface MonthHistoryPoint {
   /** Épargne totale cumulée à la fin du mois. */
   savingsTotal: number;
 }
-
-/** Dépenses du mois précédent, à la même date, pour comparaison. */
-export type PreviousMonthToDate = Partial<Record<CategoryId, number>>;

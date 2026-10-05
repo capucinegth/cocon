@@ -6,34 +6,31 @@ import type { Tone } from "@/types/finance";
 
 interface StatCardProps {
   label: string;
-  value: string;
+  /** Valeur déjà mise en forme (idéalement un <Money />). */
+  value: ReactNode;
   caption?: ReactNode;
   tone: Tone;
   icon: LucideIcon;
-  /** Icône à gauche même sur mobile (carte pleine largeur). */
-  wide?: boolean;
+  /** « compact » : pour trois cartes côte à côte sur mobile. */
+  size?: "compact" | "regular";
   className?: string;
 }
 
-/** Petite carte chiffre clé, teintée selon le type d'information. */
-export function StatCard({ label, value, caption, tone, icon: Icon, wide, className }: StatCardProps) {
+/** Petite carte chiffre clé, légèrement teintée selon le type d'information. */
+export function StatCard({ label, value, caption, tone, icon: Icon, size = "regular", className }: StatCardProps) {
   const styles = toneStyles[tone];
+  const compact = size === "compact";
   return (
-    <div
-      className={cn(
-        "flex rounded-card p-5",
-        styles.surface,
-        wide ? "items-center gap-4" : "flex-col gap-3 lg:flex-row lg:items-center lg:gap-4",
-        className,
-      )}
-    >
-      <span className={cn("grid size-11 shrink-0 place-items-center rounded-2xl bg-surface/80")}>
-        <Icon size={20} strokeWidth={1.9} className={styles.text} aria-hidden />
+    <div className={cn("flex min-w-0 flex-col rounded-card", styles.surface, compact ? "gap-2.5 p-3.5 sm:p-4" : "gap-3 p-5", className)}>
+      <span className={cn("grid shrink-0 place-items-center bg-surface/85", compact ? "size-9 rounded-xl" : "size-11 rounded-2xl")}>
+        <Icon size={compact ? 17 : 20} strokeWidth={1.9} className={styles.text} aria-hidden />
       </span>
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-muted">{label}</p>
-        <p className="mt-0.5 text-[22px] font-semibold leading-tight tracking-tight">{value}</p>
-        {caption && <p className="mt-1 text-[13px] leading-snug text-muted">{caption}</p>}
+      <div className={cn("min-w-0", compact && "mt-auto")}>
+        <p className={cn("font-medium leading-snug text-ink-soft", compact ? "text-[13px]" : "text-sm")}>{label}</p>
+        <p className={cn("mt-0.5 font-semibold leading-tight tracking-tight", compact ? "text-[17px] sm:text-[20px]" : "text-[22px]")}>
+          {value}
+        </p>
+        {caption && <p className="mt-1 text-[13px] leading-snug text-ink-soft">{caption}</p>}
       </div>
     </div>
   );

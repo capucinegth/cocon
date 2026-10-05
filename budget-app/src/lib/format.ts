@@ -52,6 +52,11 @@ export function formatPercent(ratio: number): string {
   return `${Math.floor(ratio * 100 + 1e-9)}${GROUP}%`;
 }
 
+/** Part d'un total : jamais « 0 % » pour un montant non nul. */
+export function formatShare(ratio: number): string {
+  return ratio > 0 && ratio < 0.01 ? `<${GROUP}1${GROUP}%` : formatPercent(ratio);
+}
+
 /** Variation relative signée : 0.28 → « +28 % ». */
 export function formatDelta(ratio: number): string {
   const rounded = Math.round(ratio * 100);

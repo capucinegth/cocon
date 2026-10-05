@@ -1,31 +1,34 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Money } from "@/components/ui/money";
 import { SectionHeader } from "@/components/ui/section-header";
-import { getCategory } from "@/config/categories";
-import { upcomingOfMonth } from "@/lib/budget";
+import { monthUpcoming, type MonthSummary } from "@/lib/budget";
 import { formatRelativeFuture, getMonthDay } from "@/lib/dates";
-import { formatMoney } from "@/lib/format";
-import { useBudget } from "@/store/budget-store";
+import { useBudget, useCategoryLookup } from "@/store/budget-store";
 
-/** « À venir » : les prochains prélèvements prévus, pour anticiper. */
-export function UpcomingList() {
+/** « À venir » : les prochains prélèvements et dépenses prévues, pour anticiper. */
+export function UpcomingList({ summary }: { summary: MonthSummary }) {
   const data = useBudget();
-  const items = upcomingOfMonth(data);
+  const categoryOf = useCategoryLookup();
+  const items = summary.isCurrent ? monthUpcoming(data, summary.month) : [];
 
   return (
     <Card>
       <SectionHeader
         title="À venir"
-        subtitle="Prélèvements prévus ce mois-ci"
-        aside={<span className="tabular text-[15px] font-semibold">{formatMoney(-data.summary.upcoming)}</span>}
+        subtitle={summary.isCurrent ? "Déjà déduit de ton disponible" : "Ce mois-ci est terminé"}
+        aside={items.length ? <Money value={-summary.upcoming} className="tabular text-[15px] font-semibold" /> : undefined}
       />
       {items.length === 0 ? (
-        <p className="text-[15px] text-muted">Rien de prévu d&apos;ici la fin du mois ✨</p>
+        <EmptyState emoji="🌙" title="Plus rien de prévu" className="py-4">
+          {summary.isPast ? "Tous les mouvements de ce mois sont passés." : "Aucune dépense prévue d'ici la fin du mois."}
+        </EmptyState>
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => {
-            const category = getCategory(item.categoryId);
+            const category = categoryOf(item.categoryId);
             const { day, month } = getMonthDay(item.date);
             return (
               <li key={item.id} className="flex items-center gap-4">
@@ -34,12 +37,12 @@ export function UpcomingList() {
                   <span className="mt-0.5 text-[11px] font-semibold text-peach-700">{month}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold">{item.label}</p>
-                  <p className="truncate text-[13px] text-muted">
+                  <p className="break-words text-[15px] font-semibold">{item.label}</p>
+                  <p className="break-words text-[13px] text-muted">
                     {category.emoji} {category.label} · {formatRelativeFuture(item.date, data.today)}
                   </p>
                 </div>
-                <span className="tabular text-[15px] font-semibold">{formatMoney(-item.amount)}</span>
+                <Money value={-item.amount} className="tabular text-[15px] font-semibold" />
               </li>
             );
           })}

@@ -22,7 +22,7 @@ export function SectionHeader({ title, subtitle, href, linkLabel = "Voir tout", 
       {href ? (
         <Link
           href={href}
-          className="-mr-2 inline-flex shrink-0 items-center rounded-full py-1 pl-3 pr-1.5 text-sm font-semibold text-blush-700 transition-colors hover:bg-blush-50"
+          className="-mr-2 inline-flex h-10 shrink-0 items-center rounded-full pl-3 pr-1.5 text-sm font-semibold text-blush-700 transition-colors hover:bg-blush-50"
         >
           {linkLabel}
           <ChevronRight size={16} aria-hidden />
