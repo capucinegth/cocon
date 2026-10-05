@@ -1,5 +1,6 @@
 import type { SavingsGoal } from "@/types/finance";
-import { monthKey } from "./dates";
+import { addMonths, monthKey } from "./dates";
+import { roundCents } from "./format";
 
 export type GoalPace = "done" | "ahead" | "on-track" | "late" | "no-deadline";
 
@@ -11,16 +12,10 @@ export interface GoalProgress {
   pace: GoalPace;
 }
 
-function addMonths(month: string, count: number): string {
-  const [year, m] = month.split("-").map(Number);
-  const index = year * 12 + (m - 1) + count;
-  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
-}
-
 /** Où en est un objectif, et l'atteindra-t-on à temps au rythme actuel ? */
 export function getGoalProgress(goal: SavingsGoal, today: string): GoalProgress {
-  const remaining = Math.max(goal.target - goal.saved, 0);
-  const ratio = goal.target > 0 ? goal.saved / goal.target : 0;
+  const remaining = Math.max(roundCents(goal.target - goal.saved), 0);
+  const ratio = goal.target > 0 ? Math.min(goal.saved / goal.target, 1) : 0;
   if (remaining === 0) return { ratio: 1, remaining: 0, pace: "done" };
 
   const eta =

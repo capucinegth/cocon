@@ -13,6 +13,7 @@ import {
   Info,
   Landmark,
   Lock,
+  LogOut,
   Moon,
   Palette,
   Plus,
@@ -22,23 +23,29 @@ import {
   Smartphone,
   Sparkles,
   Sprout,
+  UserRound,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/layout/brand";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Toggle } from "@/components/ui/toggle";
-import { accounts } from "@/config/accounts";
 import { appConfig } from "@/config/app";
 import { isExpenseCategory } from "@/config/categories";
+import { planFor } from "@/lib/budget";
+import { downloadText, transactionsToCsv } from "@/lib/export";
+import { errorMessage } from "@/services/repository";
 import { useBudget } from "@/store/budget-store";
+import { useSession } from "@/store/session-store";
 import { useUI } from "@/store/ui-store";
+import type { Preferences } from "@/types/finance";
 
-function SoonBadge() {
-  return <span className="shrink-0 rounded-full bg-lilac-50 px-2.5 py-1 text-[12px] font-semibold text-lilac-700">Bientôt</span>;
+function SoonBadge({ children = "Bientôt" }: { children?: ReactNode }) {
+  return <span className="shrink-0 rounded-full bg-lilac-50 px-2.5 py-1 text-[12px] font-semibold text-lilac-700">{children}</span>;
 }
 
 interface RowProps {
@@ -98,16 +105,36 @@ const Value = ({ children }: { children: ReactNode }) => (
   </span>
 );
 
+type NotificationKey = keyof NonNullable<Preferences["notifications"]>;
+
+/** Valeurs par défaut des rappels (tant que l'utilisateur ne les a pas changées). */
+const notificationDefaults: Record<NotificationKey, boolean> = { budgetAlerts: true, billReminders: true, eveningReminder: false };
+
 export function SettingsScreen() {
-  const { categories, plan, resetDemo } = useBudget();
-  const { showToast, discreet, setDiscreet, openCategorySheet } = useUI();
-  const [budgetAlerts, setBudgetAlerts] = useState(true);
-  const [billReminders, setBillReminders] = useState(true);
-  const [eveningReminder, setEveningReminder] = useState(false);
+  const data = useBudget();
+  const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile } = data;
+  const { signOut } = useSession();
+  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets } = useUI();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+  const isDemo = source === "demo";
   const soon = () => showToast("Disponible dans une prochaine version");
 
-  const expenseCategories = categories.filter(isExpenseCategory);
-  const variableBudget = expenseCategories.filter((c) => c.group === "variables").reduce((acc, c) => acc + (plan.planned[c.id] ?? 0), 0);
+  const notifications = { ...notificationDefaults, ...stripUndefined(profile?.preferences.notifications) };
+  const setNotification = (key: NotificationKey, value: boolean) => {
+    updateProfile({ preferences: { notifications: { ...notifications, [key]: value } } }).catch((cause) => showError(errorMessage(cause)));
+  };
+
+  const expenseCategories = categories.filter((c) => isExpenseCategory(c) && !c.archived);
+  const plan = planFor(data, currentMonth);
+  const variableBudget = expenseCategories.filter((c) => c.group === "variables").reduce((acc, c) => acc + (plan?.planned[c.id] ?? 0), 0);
+  const activeAccounts = accounts.filter((a) => a.isActive);
+
+  function exportCsv() {
+    if (data.allTransactions.length === 0) return showToast("Aucune opération à exporter pour l'instant");
+    downloadText(`cocon-operations-${data.today}.csv`, transactionsToCsv(data.allTransactions, data));
+    showToast("Export téléchargé");
+  }
 
   return (
     <>
@@ -119,19 +146,52 @@ export function SettingsScreen() {
             <li className="flex items-center gap-4 px-3 py-3">
               <BrandMark size={52} />
               <div className="min-w-0">
-                <p className="text-[17px] font-semibold tracking-tight">Mon espace {appConfig.name}</p>
-                <p className="text-sm text-muted">Mode démo · données fictives, rien n&apos;est enregistré</p>
+                <p className="break-words text-[17px] font-semibold tracking-tight">
+                  {profile?.displayName ? `Espace de ${profile.displayName}` : `Mon espace ${appConfig.name}`}
+                </p>
+                <p className="break-words text-sm text-muted">
+                  {isDemo ? <>Mode démo · données fictives, rien n&apos;est enregistré</> : (profile?.email ?? "Compte connecté")}
+                </p>
               </div>
             </li>
-            <SettingsRow icon={Wallet} label="Mes comptes" hint="Courant, joint, espèces, Livret A" onClick={soon}>
-              <Value>{Object.keys(accounts).length}</Value>
+            {!isDemo && (
+              <SettingsRow icon={UserRound} label="Mon profil" hint="Prénom affiché sur l'accueil" onClick={openProfile}>
+                <Value>{profile?.displayName || "—"}</Value>
+              </SettingsRow>
+            )}
+            <SettingsRow icon={Wallet} label="Mes comptes" hint={activeAccounts.map((a) => a.label).join(", ") || "Aucun compte"} onClick={soon}>
+              <Value>{activeAccounts.length}</Value>
             </SettingsRow>
             <SettingsRow icon={Landmark} label="Connexion bancaire" hint="Importer tes opérations automatiquement" onClick={soon}>
               <SoonBadge />
             </SettingsRow>
-            <SettingsRow icon={Repeat} label="Synchronisation" hint="Retrouver tes données sur tous tes appareils" onClick={soon}>
-              <SoonBadge />
+            <SettingsRow
+              icon={Repeat}
+              label="Synchronisation"
+              hint={isDemo ? "Disponible avec un compte Cocon" : "Tes données sont enregistrées et retrouvées sur tous tes appareils"}
+              onClick={isDemo ? soon : undefined}
+            >
+              {isDemo ? <SoonBadge /> : <SoonBadge>Activée</SoonBadge>}
             </SettingsRow>
+            {!isDemo && (
+              <SettingsRow
+                icon={LogOut}
+                label={signingOut ? "Déconnexion…" : "Se déconnecter"}
+                hint="Tes données restent enregistrées dans ton compte"
+                onClick={async () => {
+                  if (signingOut) return;
+                  setSigningOut(true);
+                  try {
+                    await signOut();
+                  } catch {
+                    setSigningOut(false);
+                    showError("Déconnexion impossible pour le moment. Vérifie ta connexion puis réessaie.");
+                  }
+                }}
+              >
+                <ChevronRight size={18} className="text-muted" aria-hidden />
+              </SettingsRow>
+            )}
           </SettingsGroup>
 
           <SettingsGroup title="Préférences">
@@ -141,6 +201,7 @@ export function SettingsScreen() {
                 onChange={(value) => {
                   setDiscreet(value);
                   showToast(value ? "Montants masqués" : "Montants visibles");
+                  if (!isDemo) updateProfile({ preferences: { discreet: value } }).catch((cause) => showError(errorMessage(cause)));
                 }}
                 label="Mode discret"
               />
@@ -167,9 +228,16 @@ export function SettingsScreen() {
             <li className="px-3 py-3">
               <ul className="flex flex-wrap gap-2" aria-label="Catégories de dépenses">
                 {expenseCategories.map((category) => (
-                  <li key={category.id} className="inline-flex items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[13px] font-medium">
-                    <span aria-hidden>{category.emoji}</span>
-                    {category.label}
+                  <li key={category.id}>
+                    <button
+                      type="button"
+                      onClick={() => openCategoryEdit(category.id, currentMonth)}
+                      aria-label={`Modifier la catégorie ${category.label}`}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-blush-50"
+                    >
+                      <span aria-hidden>{category.emoji}</span>
+                      {category.label}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -185,14 +253,19 @@ export function SettingsScreen() {
             <SettingsRow icon={CalendarDays} label="Début du mois budgétaire" onClick={soon}>
               <Value>Le 1er</Value>
             </SettingsRow>
-            <SettingsRow icon={Sparkles} label="Budget du quotidien" hint="Courses, sorties, imprévus" onClick={soon}>
+            <SettingsRow icon={Sparkles} label="Budget du quotidien" hint="Courses, sorties, imprévus" onClick={() => router.push("/budget")}>
               <Value>
                 <Money value={variableBudget} />
               </Value>
             </SettingsRow>
-            <SettingsRow icon={Sprout} label="Épargne mensuelle" hint="Répartie entre tes objectifs" onClick={soon}>
+            <SettingsRow icon={Coins} label="Revenus prévus" hint="Comptés tant qu'ils ne sont pas saisis" onClick={() => openTargets(currentMonth)}>
               <Value>
-                <Money value={plan.planned.epargne ?? 0} />
+                <Money value={plan?.incomeTarget ?? 0} />
+              </Value>
+            </SettingsRow>
+            <SettingsRow icon={Sprout} label="Épargne mensuelle" hint="Répartie entre tes objectifs" onClick={() => openTargets(currentMonth)}>
+              <Value>
+                <Money value={plan?.savingsTarget ?? 0} />
               </Value>
             </SettingsRow>
             <SettingsRow icon={CalendarClock} label="Dépense « importante »" hint="Seuil d'affichage dans le calendrier" onClick={soon}>
@@ -202,15 +275,22 @@ export function SettingsScreen() {
             </SettingsRow>
           </SettingsGroup>
 
-          <SettingsGroup title="Notifications" description="Aperçu : les rappels réels arriveront avec l'application installable.">
+          <SettingsGroup
+            title="Notifications"
+            description={
+              isDemo
+                ? "Aperçu : les rappels réels arriveront avec l'application installable."
+                : "Bientôt : les rappels arriveront avec l'application installable. Tes choix sont déjà enregistrés."
+            }
+          >
             <SettingsRow icon={Bell} label="Alertes de budget" hint="Quand une catégorie approche de sa limite">
-              <Toggle checked={budgetAlerts} onChange={setBudgetAlerts} label="Alertes de budget" />
+              <Toggle checked={notifications.budgetAlerts} onChange={(value) => setNotification("budgetAlerts", value)} label="Alertes de budget" />
             </SettingsRow>
             <SettingsRow icon={CalendarClock} label="Rappel des prélèvements" hint="La veille d'un loyer ou d'une facture">
-              <Toggle checked={billReminders} onChange={setBillReminders} label="Rappel des prélèvements" />
+              <Toggle checked={notifications.billReminders} onChange={(value) => setNotification("billReminders", value)} label="Rappel des prélèvements" />
             </SettingsRow>
             <SettingsRow icon={Smartphone} label="Rappel du soir" hint="Penser à noter ses dépenses">
-              <Toggle checked={eveningReminder} onChange={setEveningReminder} label="Rappel du soir" />
+              <Toggle checked={notifications.eveningReminder} onChange={(value) => setNotification("eveningReminder", value)} label="Rappel du soir" />
             </SettingsRow>
           </SettingsGroup>
 
@@ -221,28 +301,38 @@ export function SettingsScreen() {
             <SettingsRow icon={Fingerprint} label="Face ID / empreinte" onClick={soon}>
               <SoonBadge />
             </SettingsRow>
-            <SettingsRow icon={Download} label="Exporter mes données" hint="Fichier CSV" onClick={soon}>
-              <SoonBadge />
+            <SettingsRow icon={Download} label="Exporter mes données" hint="Fichier CSV de toutes tes opérations" onClick={exportCsv}>
+              <ChevronRight size={18} className="text-muted" aria-hidden />
             </SettingsRow>
-            <SettingsRow icon={ShieldCheck} label="Confidentialité" hint="En démo, tout reste dans ce navigateur" />
+            <SettingsRow
+              icon={ShieldCheck}
+              label="Confidentialité"
+              hint={isDemo ? "En démo, tout reste dans ce navigateur" : "Tes données sont privées : liées à ton compte, invisibles des autres utilisateurs"}
+            />
           </SettingsGroup>
 
           <SettingsGroup title="À propos">
-            <SettingsRow icon={Info} label={`${appConfig.name} · prototype ${appConfig.version}`} hint={appConfig.tagline} />
-            <SettingsRow
-              icon={RotateCcw}
-              label="Réinitialiser la démo"
-              hint="Revenir aux données d'exemple"
-              onClick={() => {
-                resetDemo();
-                showToast("Données de démo restaurées");
-              }}
-            >
-              <ChevronRight size={18} className="text-muted" aria-hidden />
-            </SettingsRow>
+            <SettingsRow icon={Info} label={`${appConfig.name} · version ${appConfig.version}`} hint={appConfig.tagline} />
+            {isDemo && (
+              <SettingsRow
+                icon={RotateCcw}
+                label="Réinitialiser la démo"
+                hint="Revenir aux données d'exemple"
+                onClick={() => {
+                  resetDemo();
+                  showToast("Données de démo restaurées");
+                }}
+              >
+                <ChevronRight size={18} className="text-muted" aria-hidden />
+              </SettingsRow>
+            )}
           </SettingsGroup>
         </div>
       </div>
     </>
   );
+}
+
+function stripUndefined<T extends object>(value: T | undefined): Partial<T> {
+  return Object.fromEntries(Object.entries(value ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>;
 }

@@ -1,47 +1,31 @@
 import { appConfig } from "@/config/app";
+import { demoAccounts } from "@/config/accounts";
 import { defaultCategories } from "@/config/categories";
-import type {
-  BudgetPlan,
-  Category,
-  MonthHistoryPoint,
-  SavingsGoal,
-  Transaction,
-  UpcomingExpense,
-} from "@/types/finance";
+import type { BudgetState } from "@/types/budget-data";
 import {
-  demoBudgetPlan,
+  demoBudgetPlans,
   demoGoals,
   demoHistory,
   demoOpeningBalances,
+  demoRecurring,
   demoTransactions,
-  demoUpcoming,
 } from "./demo-data";
 
-export interface BudgetData {
-  today: string;
-  categories: Category[];
-  transactions: Transaction[];
-  upcoming: UpcomingExpense[];
-  plan: BudgetPlan;
-  goals: SavingsGoal[];
-  history: MonthHistoryPoint[];
-  openingBalances: Record<string, number>;
-}
-
 /**
- * Point d'entrée unique des données.
- * Aujourd'hui : données de démonstration.
- * Plus tard : lecture depuis Supabase (même forme de retour), sans toucher aux écrans.
+ * Données de démonstration (mode démo uniquement) : jamais mélangées aux données
+ * réelles, jamais envoyées en base. Une copie neuve à chaque appel.
  */
-export function getInitialBudgetData(): BudgetData {
-  return {
+export function getDemoState(): BudgetState {
+  return structuredClone({
     today: appConfig.demoToday,
     categories: defaultCategories,
+    accounts: demoAccounts,
     transactions: demoTransactions,
-    upcoming: demoUpcoming,
-    plan: demoBudgetPlan,
+    recurring: demoRecurring,
+    plans: demoBudgetPlans,
     goals: demoGoals,
     history: demoHistory,
     openingBalances: demoOpeningBalances,
-  };
+    profile: { id: "demo", displayName: "", preferences: {} },
+  });
 }

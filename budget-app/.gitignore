@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tests (rapports et captures : jamais commités)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# exemple de configuration (sans aucune valeur secrète) : commité
+!.env.example

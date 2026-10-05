@@ -58,6 +58,18 @@ export function daysInMonth(iso: string): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** « 2026-09 » + 2 → « 2026-11 » (accepte aussi une date complète). */
+export function addMonths(isoOrMonth: string, count: number): string {
+  const { year, month } = parts(isoOrMonth);
+  const index = year * 12 + (month - 1) + count;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** Dernier jour du mois d'une date : « 2026-02-10 » → « 2026-02-28 ». */
+export function endOfMonth(iso: string): string {
+  return `${monthKey(iso)}-${String(daysInMonth(iso)).padStart(2, "0")}`;
+}
+
 export function dayOfMonth(iso: string): number {
   return parts(iso).day;
 }

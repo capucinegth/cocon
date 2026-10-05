@@ -1,4 +1,4 @@
-import { CalendarCheck, Feather, Leaf, Wind, type LucideIcon } from "lucide-react";
+import { CalendarCheck, Feather, Leaf, Sprout, Wind, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { BudgetHealth } from "@/lib/budget";
 
@@ -20,6 +20,12 @@ const styles: Record<BudgetHealth, { label: string; hint: string; icon: LucideIc
     hint: "Il reste peu de marge jusqu'à la fin du mois.",
     icon: Wind,
     className: "bg-blush-50 text-blush-700",
+  },
+  empty: {
+    label: "À démarrer",
+    hint: "Ajoute tes revenus et tes dépenses pour voir ce qu'il te reste.",
+    icon: Sprout,
+    className: "bg-surface/80 text-ink-soft",
   },
   closed: {
     label: "Mois terminé",

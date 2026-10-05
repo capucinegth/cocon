@@ -2,14 +2,16 @@
 
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
+import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 
 /** Bouton « + Ajouter » toujours à portée de pouce — mobile et tablette. */
 export function AddFab() {
   const pathname = usePathname();
   const { openAdd } = useUI();
+  const { status } = useBudget();
 
-  if (pathname.startsWith("/parametres")) return null;
+  if (pathname.startsWith("/parametres") || status !== "ready") return null;
 
   return (
     <button

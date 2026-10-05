@@ -1,7 +1,7 @@
 /**
- * Modèle de données du prototype.
- * Ces types sont pensés pour correspondre plus tard à des tables Supabase
- * (transactions, categories, accounts, budgets, goals…).
+ * Modèle de données de l'application (côté interface).
+ * Les montants sont en euros (nombres à deux décimales) ; en base ils sont stockés
+ * en centimes entiers et convertis par `src/services/mappers.ts`.
  */
 
 /** Familles de couleurs pastel définies dans globals.css. */
@@ -21,14 +21,22 @@ export interface Category {
   emoji: string;
   group: CategoryGroup;
   tone: Tone;
+  /** Catégorie archivée : conservée pour l'historique, masquée des listes. */
+  archived?: boolean;
 }
 
-export type AccountId = "courant" | "joint" | "especes" | "livret";
+export type AccountId = string;
+
+export type AccountType = "checking" | "savings" | "cash" | "joint" | "other";
 
 export interface Account {
   id: AccountId;
   label: string;
   emoji: string;
+  type: AccountType;
+  /** Solde au moment où le compte a été ajouté. Le solde courant est calculé. */
+  initialBalance: number;
+  isActive: boolean;
 }
 
 export type TransactionKind = "expense" | "income" | "saving";
@@ -43,29 +51,62 @@ export interface Transaction {
   kind: TransactionKind;
   categoryId: CategoryId;
   accountId: AccountId;
-  /** Date ISO AAAA-MM-JJ. */
+  /** Date ISO AAAA-MM-JJ (date calendaire, sans fuseau). */
   date: string;
   note?: string;
   recurrence?: Recurrence;
+  /** Règle récurrente qui a créé (ou accompagne) cette opération. */
+  recurrenceId?: string;
   /** Objectif alimenté (épargne uniquement). */
   goalId?: string;
 }
 
-/** Mouvement prévu mais pas encore passé (prélèvement, course planifiée…). */
-export interface UpcomingExpense {
+/**
+ * Mouvement à venir dans le mois : opération datée dans le futur (« prévue »)
+ * ou prochaine échéance d'une règle récurrente pas encore générée.
+ */
+export interface UpcomingItem {
   id: string;
   label: string;
   amount: number;
+  kind: TransactionKind;
   categoryId: CategoryId;
   accountId: AccountId;
   date: string;
+  origin: "planned" | "recurring";
+  recurrenceId?: string;
+  goalId?: string;
+}
+
+/** @deprecated Ancien nom (V2) — utiliser UpcomingItem. */
+export type UpcomingExpense = UpcomingItem;
+
+/** Règle d'opération récurrente (loyer, salaire, abonnement…). */
+export interface RecurringRule {
+  id: string;
+  label: string;
+  amount: number;
+  kind: TransactionKind;
+  categoryId: CategoryId;
+  accountId: AccountId;
+  goalId?: string;
+  frequency: Exclude<Recurrence, "none">;
+  /** Prochaine date à générer (AAAA-MM-JJ). */
+  nextOccurrence: string;
+  /** Jour d'origine pour les règles mensuelles (un 31 reste « fin de mois »). */
+  anchorDay?: number;
+  isActive: boolean;
 }
 
 export interface BudgetPlan {
   /** Mois concerné, format AAAA-MM. */
   month: string;
-  /** Montant prévu par catégorie (revenus, dépenses et épargne). */
+  /** Montant prévu par catégorie de dépense. */
   planned: Record<CategoryId, number>;
+  /** Épargne prévue pour le mois. */
+  savingsTarget: number;
+  /** Revenus attendus pour le mois. */
+  incomeTarget: number;
 }
 
 export interface SavingsGoal {
@@ -73,7 +114,10 @@ export interface SavingsGoal {
   label: string;
   emoji: string;
   tone: Tone;
+  /** Montant actuellement épargné (épargne initiale + versements). */
   saved: number;
+  /** Épargne initiale, avant le suivi dans Cocon. */
+  initialAmount?: number;
   target: number;
   /** Versement mensuel prévu vers cet objectif. */
   monthlyContribution: number;
@@ -81,11 +125,28 @@ export interface SavingsGoal {
   deadline?: string;
 }
 
-/** Mois passés dont on ne garde que les totaux (avant le début des transactions détaillées). */
+/** Totaux d'un mois (historique résumé ou recalculé à partir des opérations). */
 export interface MonthHistoryPoint {
   /** Format AAAA-MM. */
   month: string;
   expenses: number;
   /** Épargne totale cumulée à la fin du mois. */
   savingsTotal: number;
+}
+
+export interface Preferences {
+  /** Mode discret : montants floutés. */
+  discreet?: boolean;
+  notifications?: {
+    budgetAlerts?: boolean;
+    billReminders?: boolean;
+    eveningReminder?: boolean;
+  };
+}
+
+export interface Profile {
+  id: string;
+  displayName: string;
+  email?: string;
+  preferences: Preferences;
 }

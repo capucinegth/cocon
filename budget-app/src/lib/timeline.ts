@@ -4,7 +4,7 @@
  */
 import { appConfig } from "@/config/app";
 import { findCategory } from "@/config/categories";
-import type { BudgetData } from "@/data";
+import type { BudgetData } from "@/types/budget-data";
 import type { MonthHistoryPoint } from "@/types/finance";
 import { getMonthSummary, monthTransactions, monthUpcoming, total } from "./budget";
 import { dayOfMonth, daysInMonth, monthKey } from "./dates";
@@ -45,7 +45,7 @@ export function getCalendarEvents(data: BudgetData, month: string): CalendarEven
     date: u.date,
     label: u.label,
     amount: u.amount,
-    type: typeOf(u.categoryId, "expense"),
+    type: typeOf(u.categoryId, u.kind),
     planned: true,
     categoryId: u.categoryId,
   }));
@@ -74,7 +74,7 @@ export function getDailySpending(data: BudgetData, month: string): DailySpending
     .filter((t) => t.kind === "expense" && isVariable(t.categoryId))
     .forEach((t) => spent.set(dayOfMonth(t.date), (spent.get(dayOfMonth(t.date)) ?? 0) + t.amount));
   monthUpcoming(data, month)
-    .filter((u) => isVariable(u.categoryId))
+    .filter((u) => u.kind === "expense" && isVariable(u.categoryId))
     .forEach((u) => planned.set(dayOfMonth(u.date), (planned.get(dayOfMonth(u.date)) ?? 0) + u.amount));
 
   return Array.from({ length: days }, (_, i) => {
@@ -108,10 +108,14 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
   const movements = new Map<number, number>();
   const add = (day: number, amount: number) => movements.set(day, (movements.get(day) ?? 0) + amount);
   monthTransactions(data, month).forEach((t) => add(dayOfMonth(t.date), t.kind === "income" ? t.amount : -t.amount));
-  if (summary.isCurrent) monthUpcoming(data, month).forEach((u) => add(dayOfMonth(u.date), -u.amount));
+  const upcoming = summary.isCurrent ? monthUpcoming(data, month) : [];
+  upcoming.forEach((u) => add(dayOfMonth(u.date), u.kind === "income" ? u.amount : -u.amount));
 
-  // Épargne prévue mais pas encore versée : réservée dès aujourd'hui.
-  const pendingSavings = roundCents(summary.savingsReserved - summary.saved);
+  // Épargne prévue mais ni versée ni programmée : réservée dès aujourd'hui.
+  const savingsUpcoming = total(upcoming.filter((u) => u.kind === "saving").map((u) => u.amount));
+  const pendingSavings = Math.max(roundCents(summary.savingsReserved - summary.saved - savingsUpcoming), 0);
+  // Revenus attendus d'après le budget mais pas encore saisis : comptés dès demain dans la prévision.
+  const expectedIncome = summary.isCurrent ? summary.incomeExpected : 0;
   const dailyAllowance = summary.isCurrent && summary.remaining > 0 ? summary.remaining / summary.daysLeft : 0;
 
   let balance = opening;
@@ -119,6 +123,7 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
     const day = i + 1;
     balance += movements.get(day) ?? 0;
     if (summary.isCurrent && day === today) balance -= pendingSavings;
+    if (summary.isCurrent && day === today + 1) balance += expectedIncome;
     const projected = summary.isCurrent && day > today;
     const value = projected ? balance - dailyAllowance * (day - today + 1) : balance;
     return { day, balance: roundCents(value), projected };

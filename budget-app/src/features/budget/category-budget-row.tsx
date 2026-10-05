@@ -6,20 +6,34 @@ import { getUsageStatus, type CategoryUsage } from "@/lib/budget";
 import { cn } from "@/lib/cn";
 import { formatMoney } from "@/lib/format";
 
-/** Une catégorie du budget : dépensé / prévu, reste, et une barre très discrète. */
-export function CategoryBudgetRow({ usage }: { usage: CategoryUsage }) {
+/**
+ * Une catégorie du budget : dépensé / prévu, reste, et une barre très discrète.
+ * Toute la ligne ouvre la modification (le bouton porte le nom de la catégorie).
+ */
+export function CategoryBudgetRow({ usage, onEdit }: { usage: CategoryUsage; onEdit?: () => void }) {
   const { category, planned, done, upcoming, remaining, ratio } = usage;
   const spent = done + upcoming;
   const status = planned > 0 ? getUsageStatus(ratio) : "ok";
   const isFixed = category.group === "fixes";
 
   return (
-    <li className="py-4 first:pt-1 last:pb-1">
+    <li className="relative py-4 first:pt-1 last:pb-1">
       <div className="flex items-center gap-3">
         <CategoryBadge emoji={category.emoji} tone={category.tone} size="sm" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2">
-            <span className="break-words text-[15px] font-semibold">{category.label}</span>
+            {onEdit ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="cursor-pointer break-words text-left text-[15px] font-semibold outline-none transition-colors duration-200 after:absolute after:-inset-x-2 after:inset-y-0 after:rounded-2xl hover:text-blush-700 focus-visible:after:ring-2 focus-visible:after:ring-blush-700"
+              >
+                {category.label}
+                <span className="sr-only"> : modifier le budget</span>
+              </button>
+            ) : (
+              <span className="break-words text-[15px] font-semibold">{category.label}</span>
+            )}
             {isFixed && (
               <span className="shrink-0 rounded-full bg-lilac-50 px-2 py-0.5 text-[11px] font-semibold text-lilac-700">Fixe</span>
             )}

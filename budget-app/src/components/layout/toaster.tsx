@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { useUI } from "@/store/ui-store";
 
 /** Confirmation discrète en bas d'écran, avec une action éventuelle (« Annuler »). */
@@ -8,7 +8,7 @@ export function Toaster() {
   const { toast, dismissToast } = useUI();
   return (
     <div
-      aria-live="polite"
+      aria-live={toast?.tone === "error" ? "assertive" : "polite"}
       className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4 bottom-[calc(max(env(safe-area-inset-bottom),12px)+156px)] lg:bottom-8"
     >
       {toast && (
@@ -16,7 +16,11 @@ export function Toaster() {
           key={toast.id}
           className="pointer-events-auto inline-flex max-w-full animate-pop items-center gap-3 rounded-[1.75rem] bg-ink py-2 pl-5 pr-2 text-[15px] font-medium text-white shadow-float"
         >
-          <CircleCheck size={18} className="shrink-0 text-sage-100" aria-hidden />
+          {toast.tone === "error" ? (
+            <CircleAlert size={18} className="shrink-0 text-blush-200" aria-hidden />
+          ) : (
+            <CircleCheck size={18} className="shrink-0 text-sage-100" aria-hidden />
+          )}
           <span className="min-w-0 break-words py-1">{toast.message}</span>
           {toast.onAction ? (
             <button

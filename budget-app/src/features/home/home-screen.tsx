@@ -12,6 +12,7 @@ import { GoalTeaser } from "./goal-teaser";
 import { KeyFigures } from "./key-figures";
 import { RecentTransactions } from "./recent-transactions";
 import { UpcomingList } from "./upcoming-list";
+import { WelcomeCard } from "./welcome-card";
 
 /**
  * Accueil. Mobile : une colonne, dans l'ordre d'importance.
@@ -22,12 +23,21 @@ export function HomeScreen() {
   const [month, setMonth] = useState(data.currentMonth);
   const months = useMemo(() => availableMonths(data), [data]);
   const summary = useMemo(() => getMonthSummary(data, month), [data, month]);
+  const name = data.profile?.displayName.trim();
+  // Nouveau compte : aucune opération, aucun budget, aucun objectif.
+  const isNew = data.allTransactions.length === 0 && data.plans.length === 0 && data.goals.length === 0;
 
   return (
     <>
-      <PageHeader title="Bonjour 👋">
+      <PageHeader title={name ? `Bonjour ${name} 👋` : "Bonjour 👋"}>
         <MonthSwitcher month={month} months={months} onChange={setMonth} />
       </PageHeader>
+
+      {isNew && (
+        <div className="mb-4 animate-rise sm:mb-5">
+          <WelcomeCard name={name} />
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 sm:gap-5 xl:grid xl:grid-cols-12 xl:items-start">
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-7">

@@ -1,14 +1,17 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { Pencil, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { Money } from "@/components/ui/money";
 import { Sheet } from "@/components/ui/sheet";
-import { getAccount } from "@/config/accounts";
+import { FormError } from "@/components/ui/form-error";
+import { findAccount } from "@/config/accounts";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { signedAmount } from "@/lib/budget";
 import { formatLongDate } from "@/lib/dates";
+import { errorMessage } from "@/services/repository";
 import { useBudget, useCategoryLookup } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import type { Transaction } from "@/types/finance";
@@ -25,13 +28,18 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function TransactionDetail({ transaction }: { transaction: Transaction }) {
-  const { goals, removeTransaction, restoreTransaction } = useBudget();
+function TransactionDetail({ transaction: opened }: { transaction: Transaction }) {
+  const { goals, accounts, recurring, allTransactions, today, removeTransaction, restoreTransaction } = useBudget();
   const categoryOf = useCategoryLookup();
-  const { closeSheet, showToast } = useUI();
+  const { closeSheet, showToast, showError, openAdd } = useUI();
+  // Version à jour (si elle a été modifiée depuis l'ouverture).
+  const [transaction] = useState(() => allTransactions.find((t) => t.id === opened.id) ?? opened);
+  const { pending, error, run } = useAsyncAction();
   const category = categoryOf(transaction.categoryId);
   const goal = goals.find((g) => g.id === transaction.goalId);
+  const rule = recurring.find((r) => r.id === transaction.recurrenceId);
   const amount = signedAmount(transaction);
+  const planned = transaction.date > today;
 
   return (
     <div className="px-6 pb-[max(env(safe-area-inset-bottom),24px)] pt-2">
@@ -56,27 +64,43 @@ function TransactionDetail({ transaction }: { transaction: Transaction }) {
             {goal.emoji} {goal.label}
           </Row>
         )}
-        <Row label="Date">{formatLongDate(transaction.date)}</Row>
-        <Row label="Compte">{getAccount(transaction.accountId).label}</Row>
-        <Row label="Récurrence">{recurrenceLabels[transaction.recurrence ?? "none"]}</Row>
+        <Row label="Date">
+          {formatLongDate(transaction.date)}
+          {planned && <span className="text-muted"> · prévue</span>}
+        </Row>
+        <Row label="Compte">{findAccount(accounts, transaction.accountId).label}</Row>
+        <Row label="Récurrence">
+          {recurrenceLabels[rule?.frequency ?? transaction.recurrence ?? "none"]}
+          {rule && !rule.isActive && <span className="text-muted"> · en pause</span>}
+        </Row>
         {transaction.note && <Row label="Note">{transaction.note}</Row>}
       </dl>
 
-      <div className="mt-5 flex gap-3">
-        <Button variant="soft" className="flex-1" onClick={closeSheet}>
-          Fermer
+      <FormError message={error} className="mt-4" />
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <Button variant="soft" onClick={() => openAdd({ transaction })} disabled={pending}>
+          <Pencil size={16} aria-hidden />
+          Modifier
         </Button>
         <Button
           variant="danger"
-          className="flex-1"
-          onClick={() => {
-            removeTransaction(transaction);
+          disabled={pending}
+          aria-busy={pending || undefined}
+          onClick={async () => {
+            const ok = await run(() => removeTransaction(transaction));
+            if (!ok) return;
             closeSheet();
-            showToast("Opération supprimée", { label: "Annuler", onAction: () => restoreTransaction(transaction) });
+            showToast("Opération supprimée", {
+              label: "Annuler",
+              onAction: () => {
+                restoreTransaction(transaction).catch((cause) => showError(errorMessage(cause)));
+              },
+            });
           }}
         >
           <Trash2 size={17} aria-hidden />
-          Supprimer
+          {pending ? "Suppression…" : "Supprimer"}
         </Button>
       </div>
     </div>

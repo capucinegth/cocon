@@ -1,169 +1,424 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findCategory } from "@/config/categories";
-import { getInitialBudgetData, type BudgetData } from "@/data";
+import { appConfig } from "@/config/app";
 import { getMonthSummary, type MonthSummary } from "@/lib/budget";
 import { monthKey } from "@/lib/dates";
-import { roundCents } from "@/lib/format";
-import { slugify } from "@/lib/text";
-import type { AccountId, Category, CategoryId, Recurrence, SavingsGoal, Tone, Transaction, TransactionKind } from "@/types/finance";
+import { uuid } from "@/lib/ids";
+import { todayInParis } from "@/lib/paris-time";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { dataSource, type DataSource } from "@/lib/supabase/env";
+import { createDemoRepository, createDemoState } from "@/services/demo-repository";
+import { errorMessage, isSessionError, type BudgetRepository } from "@/services/repository";
+import { createSupabaseRepository } from "@/services/supabase-repository";
+import type { BudgetData, BudgetState } from "@/types/budget-data";
+import type { Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
+import {
+  buildCategory,
+  buildGoal,
+  buildTransaction,
+  deriveBudgetData,
+  editTransaction,
+  withArchivedCategory,
+  withCategory,
+  withCategoryBudget,
+  withEditedTransaction,
+  withGoal,
+  withMonthTargets,
+  withoutGoal,
+  withoutRecurring,
+  withoutTransaction,
+  withProfile,
+  withTransaction,
+  withUpdatedCategory,
+  withUpdatedGoal,
+  withUpdatedRecurring,
+  type CategoryInput,
+  type GoalInput,
+  type MonthTargets,
+  type ProfilePatch,
+  type RecurringPatch,
+  type TransactionInput,
+} from "./budget-state";
+import { useSession } from "./session-store";
 
-export interface NewTransactionInput {
-  amount: number;
-  kind: TransactionKind;
-  categoryId: CategoryId;
-  accountId: AccountId;
-  date: string;
-  label?: string;
-  recurrence: Recurrence;
-  goalId?: string;
-}
+export type NewTransactionInput = TransactionInput;
+export type NewCategoryInput = CategoryInput & { budget: number };
+export type NewGoalInput = GoalInput;
 
-export interface NewCategoryInput {
-  label: string;
-  emoji: string;
-  group: "fixes" | "variables";
-  tone: Tone;
-  budget: number;
-}
-
-export type NewGoalInput = Omit<SavingsGoal, "id">;
+export type LoadStatus = "loading" | "ready" | "error";
 
 interface BudgetContextValue extends BudgetData {
+  source: DataSource;
+  status: LoadStatus;
+  loadError: string | null;
   currentMonth: string;
   /** Résumé du mois en cours (le plus utilisé). */
   summary: MonthSummary;
-  addTransaction: (input: NewTransactionInput) => Transaction;
-  removeTransaction: (transaction: Transaction) => void;
-  restoreTransaction: (transaction: Transaction) => void;
-  addCategory: (input: NewCategoryInput) => Category;
-  addGoal: (input: NewGoalInput) => SavingsGoal;
+  /** Toutes les opérations, y compris celles datées dans le futur. */
+  allTransactions: Transaction[];
+  reload: () => Promise<void>;
+  addTransaction: (input: NewTransactionInput) => Promise<Transaction>;
+  updateTransaction: (original: Transaction, input: Omit<NewTransactionInput, "recurrence">) => Promise<Transaction>;
+  /** `withRecurrence` : supprime aussi la règle créée avec l'opération (annulation d'un ajout). */
+  removeTransaction: (transaction: Transaction, options?: { withRecurrence?: boolean }) => Promise<void>;
+  restoreTransaction: (transaction: Transaction) => Promise<void>;
+  addCategory: (input: NewCategoryInput, month?: string) => Promise<Category>;
+  updateCategory: (id: CategoryId, patch: Partial<Pick<Category, "label" | "emoji" | "tone">>) => Promise<void>;
+  archiveCategory: (id: CategoryId) => Promise<void>;
+  setCategoryBudget: (month: string, categoryId: CategoryId, amount: number) => Promise<void>;
+  setMonthTargets: (month: string, targets: MonthTargets) => Promise<void>;
+  addGoal: (input: NewGoalInput) => Promise<SavingsGoal>;
+  updateGoal: (id: string, patch: Partial<GoalInput>) => Promise<void>;
+  removeGoal: (id: string) => Promise<void>;
+  updateRecurring: (id: string, patch: RecurringPatch) => Promise<void>;
+  removeRecurring: (id: string) => Promise<void>;
+  updateProfile: (patch: { displayName?: string; preferences?: Preferences }) => Promise<void>;
   resetDemo: () => void;
 }
 
 const BudgetContext = createContext<BudgetContextValue | null>(null);
 
-let localId = 0;
-const nextId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(localId++).toString(36)}`;
-
-/** Une opération d'épargne liée à un objectif fait avancer cet objectif. */
-function applyToGoals(goals: SavingsGoal[], transaction: Transaction, direction: 1 | -1): SavingsGoal[] {
-  if (transaction.kind !== "saving" || !transaction.goalId) return goals;
-  return goals.map((goal) =>
-    goal.id === transaction.goalId
-      ? { ...goal, saved: Math.max(roundCents(goal.saved + direction * transaction.amount), 0) }
-      : goal,
-  );
+function emptyState(today: string): BudgetState {
+  return {
+    today,
+    categories: [],
+    accounts: [],
+    transactions: [],
+    recurring: [],
+    plans: [],
+    goals: [],
+    history: null,
+    openingBalances: null,
+    profile: null,
+  };
 }
 
+function createRepository(): BudgetRepository {
+  return dataSource === "supabase" ? createSupabaseRepository(getSupabaseBrowserClient()) : createDemoRepository();
+}
+
+/** Au retour sur l'onglet, on recharge si la date a changé ou si les données datent un peu (autre appareil). */
+const REFRESH_AFTER_MS = 60_000;
+
 /**
- * État du prototype, en mémoire uniquement (rien n'est enregistré).
- * Plus tard : remplacé par Supabase (lecture + écriture) derrière la même interface.
+ * Données de Cocon. Chaque modification est d'abord enregistrée (base ou démo),
+ * puis appliquée à l'écran : en cas d'erreur, rien ne change et l'erreur est remontée
+ * au formulaire, qui garde la saisie.
  */
 export function BudgetProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<BudgetData>(getInitialBudgetData);
+  const { handleSessionExpired } = useSession();
+  const [repository] = useState(createRepository);
+  const isDemo = repository.source === "demo";
+  const [state, setState] = useState<BudgetState | null>(() => (isDemo ? createDemoState() : null));
+  const [status, setStatus] = useState<LoadStatus>(isDemo ? "ready" : "loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  const loadedAt = useRef(0);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
-  const { categories, goals } = data;
-
-  const addTransaction = useCallback(
-    (input: NewTransactionInput) => {
-      const fallback = input.goalId
-        ? (goals.find((g) => g.id === input.goalId)?.label ?? "Épargne")
-        : findCategory(categories, input.categoryId).label;
-      const transaction: Transaction = {
-        id: nextId("t"),
-        amount: input.amount,
-        kind: input.kind,
-        categoryId: input.categoryId,
-        accountId: input.accountId,
-        date: input.date,
-        recurrence: input.recurrence,
-        goalId: input.goalId,
-        label: input.label?.trim() || fallback,
-      };
-      setData((current) => ({
-        ...current,
-        transactions: [transaction, ...current.transactions],
-        goals: applyToGoals(current.goals, transaction, 1),
-      }));
-      return transaction;
+  const fail = useCallback(
+    (error: unknown): never => {
+      if (isSessionError(error)) handleSessionExpired();
+      throw error;
     },
-    [categories, goals],
+    [handleSessionExpired],
   );
 
-  /** Supprime une opération ; l'appelant garde l'objet pour pouvoir l'annuler. */
-  const removeTransaction = useCallback((transaction: Transaction) => {
-    setData((current) =>
-      current.transactions.some((t) => t.id === transaction.id)
-        ? {
-            ...current,
-            transactions: current.transactions.filter((t) => t.id !== transaction.id),
-            goals: applyToGoals(current.goals, transaction, -1),
-          }
-        : current,
-    );
-  }, []);
+  const load = useCallback(
+    async (silent: boolean) => {
+      if (!silent) setStatus("loading");
+      try {
+        const next = await repository.load(todayInParis());
+        loadedAt.current = Date.now();
+        setState(next);
+        setStatus("ready");
+        setLoadError(null);
+      } catch (error) {
+        if (isSessionError(error)) return handleSessionExpired();
+        // Un rafraîchissement discret raté n'efface pas les données affichées.
+        if (silent && stateRef.current) return;
+        setLoadError(errorMessage(error));
+        setStatus("error");
+      }
+    },
+    [repository, handleSessionExpired],
+  );
 
-  const restoreTransaction = useCallback((transaction: Transaction) => {
-    setData((current) =>
-      current.transactions.some((t) => t.id === transaction.id)
-        ? current
-        : {
-            ...current,
-            transactions: [transaction, ...current.transactions],
-            goals: applyToGoals(current.goals, transaction, 1),
-          },
-    );
-  }, []);
-
-  const addCategory = useCallback((input: NewCategoryInput) => {
-    const category: Category = {
-      id: `${slugify(input.label) || "categorie"}-${(localId++).toString(36)}`,
-      label: input.label.trim(),
-      emoji: input.emoji,
-      group: input.group,
-      tone: input.tone,
+  useEffect(() => {
+    if (isDemo) return;
+    // Chargement initial des données (Supabase) : asynchrone, après le premier rendu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(false);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !stateRef.current) return;
+      const dayChanged = stateRef.current.today !== todayInParis();
+      if (dayChanged || Date.now() - loadedAt.current > REFRESH_AFTER_MS) void load(true);
     };
-    setData((current) => ({
-      ...current,
-      categories: [...current.categories, category].sort((a, b) => groupOrder(a) - groupOrder(b)),
-      plan: { ...current.plan, planned: { ...current.plan.planned, [category.id]: roundCents(input.budget) } },
-    }));
-    return category;
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [isDemo, load]);
+
+  const reload = useCallback(() => load(false), [load]);
+
+  /** Enregistre puis applique ; rien n'est modifié à l'écran si l'enregistrement échoue. */
+  const commit = useCallback(
+    async (persist: () => Promise<void>, apply: (current: BudgetState) => BudgetState) => {
+      try {
+        await persist();
+      } catch (error) {
+        fail(error);
+      }
+      setState((current) => (current ? apply(current) : current));
+    },
+    [fail],
+  );
+
+  const requireState = useCallback(() => {
+    const current = stateRef.current;
+    if (!current) throw new Error("Données pas encore chargées.");
+    return current;
   }, []);
 
-  const addGoal = useCallback((input: NewGoalInput) => {
-    const goal: SavingsGoal = { ...input, id: nextId("g") };
-    setData((current) => ({ ...current, goals: [...current.goals, goal] }));
-    return goal;
-  }, []);
+  const addTransaction = useCallback(
+    async (input: NewTransactionInput) => {
+      const { transaction, rule } = buildTransaction(requireState(), input, uuid);
+      await commit(
+        () => repository.createTransaction(transaction, rule),
+        (current) => withTransaction(current, transaction, rule),
+      );
+      return transaction;
+    },
+    [commit, repository, requireState],
+  );
 
-  const resetDemo = useCallback(() => setData(getInitialBudgetData()), []);
+  const updateTransaction = useCallback(
+    async (original: Transaction, input: Omit<NewTransactionInput, "recurrence">) => {
+      const updated = editTransaction(requireState(), original, input);
+      await commit(
+        () => repository.updateTransaction(updated),
+        (current) => withEditedTransaction(current, updated),
+      );
+      return updated;
+    },
+    [commit, repository, requireState],
+  );
+
+  const removeTransaction = useCallback(
+    async (transaction: Transaction, options: { withRecurrence?: boolean } = {}) => {
+      const ruleId = options.withRecurrence ? transaction.recurrenceId : undefined;
+      await commit(
+        () => repository.deleteTransaction(transaction, ruleId),
+        (current) => withoutTransaction(current, transaction, ruleId),
+      );
+    },
+    [commit, repository],
+  );
+
+  const restoreTransaction = useCallback(
+    async (transaction: Transaction) => {
+      // La règle récurrente a pu être supprimée entre-temps : on ne recrée pas de lien cassé.
+      const hasRule = Boolean(transaction.recurrenceId && requireState().recurring.some((r) => r.id === transaction.recurrenceId));
+      const restored: Transaction = hasRule ? transaction : { ...transaction, recurrenceId: undefined, recurrence: transaction.recurrenceId ? "none" : transaction.recurrence };
+      await commit(
+        () => repository.createTransaction(restored),
+        (current) => withTransaction(current, restored),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const setCategoryBudget = useCallback(
+    async (month: string, categoryId: CategoryId, amount: number) => {
+      await commit(
+        () => repository.setCategoryBudget(month, categoryId, amount),
+        (current) => withCategoryBudget(current, month, categoryId, amount),
+      );
+    },
+    [commit, repository],
+  );
+
+  const addCategory = useCallback(
+    async (input: NewCategoryInput, month?: string) => {
+      const current = requireState();
+      const category = buildCategory(input, uuid, isDemo);
+      const budgetMonth = month ?? monthKey(current.today);
+      await commit(
+        async () => {
+          await repository.createCategory(category);
+          if (input.budget > 0) await repository.setCategoryBudget(budgetMonth, category.id, input.budget);
+        },
+        (next) => {
+          const withNew = withCategory(next, category);
+          return input.budget > 0 ? withCategoryBudget(withNew, budgetMonth, category.id, input.budget) : withNew;
+        },
+      );
+      return category;
+    },
+    [commit, repository, isDemo, requireState],
+  );
+
+  const updateCategory = useCallback(
+    async (id: CategoryId, patch: Partial<Pick<Category, "label" | "emoji" | "tone">>) => {
+      const category = { ...findCategory(requireState().categories, id), ...patch };
+      await commit(
+        () => repository.updateCategory(category),
+        (current) => withUpdatedCategory(current, id, patch),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const archiveCategory = useCallback(
+    async (id: CategoryId) => {
+      await commit(
+        () => repository.archiveCategory(id),
+        (current) => withArchivedCategory(current, id),
+      );
+    },
+    [commit, repository],
+  );
+
+  const setMonthTargets = useCallback(
+    async (month: string, targets: MonthTargets) => {
+      await commit(
+        () => repository.setMonthTargets(month, targets),
+        (current) => withMonthTargets(current, month, targets),
+      );
+    },
+    [commit, repository],
+  );
+
+  const addGoal = useCallback(
+    async (input: NewGoalInput) => {
+      const goal = buildGoal(input, uuid);
+      await commit(
+        () => repository.createGoal(goal),
+        (current) => withGoal(current, goal),
+      );
+      return goal;
+    },
+    [commit, repository],
+  );
+
+  const updateGoal = useCallback(
+    async (id: string, patch: Partial<GoalInput>) => {
+      const updated = withUpdatedGoal(requireState(), id, patch).goals.find((g) => g.id === id);
+      if (!updated) throw new Error("Objectif introuvable.");
+      await commit(
+        () => repository.updateGoal(updated),
+        (current) => withUpdatedGoal(current, id, patch),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const removeGoal = useCallback(
+    async (id: string) => {
+      await commit(
+        () => repository.deleteGoal(id),
+        (current) => withoutGoal(current, id),
+      );
+    },
+    [commit, repository],
+  );
+
+  const updateRecurring = useCallback(
+    async (id: string, patch: RecurringPatch) => {
+      await commit(
+        () => repository.updateRecurring(id, patch),
+        (current) => withUpdatedRecurring(current, id, patch),
+      );
+    },
+    [commit, repository],
+  );
+
+  const removeRecurring = useCallback(
+    async (id: string) => {
+      await commit(
+        () => repository.deleteRecurring(id),
+        (current) => withoutRecurring(current, id),
+      );
+    },
+    [commit, repository],
+  );
+
+  const updateProfile = useCallback(
+    async (patch: ProfilePatch) => {
+      const current = requireState();
+      if (!current.profile) return;
+      const next = withProfile(current, patch).profile!;
+      await commit(
+        () => repository.updateProfile(next.id, { displayName: next.displayName, preferences: next.preferences }),
+        (latest) => withProfile(latest, patch),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const resetDemo = useCallback(() => {
+    if (isDemo) setState(createDemoState());
+  }, [isDemo]);
 
   const value = useMemo<BudgetContextValue>(() => {
+    const raw = state ?? emptyState(isDemo ? appConfig.demoToday : todayInParis());
+    const data = deriveBudgetData(raw);
     const currentMonth = monthKey(data.today);
     return {
       ...data,
+      source: repository.source,
+      status,
+      loadError,
       currentMonth,
       summary: getMonthSummary(data, currentMonth),
+      allTransactions: raw.transactions,
+      reload,
       addTransaction,
+      updateTransaction,
       removeTransaction,
       restoreTransaction,
       addCategory,
+      updateCategory,
+      archiveCategory,
+      setCategoryBudget,
+      setMonthTargets,
       addGoal,
+      updateGoal,
+      removeGoal,
+      updateRecurring,
+      removeRecurring,
+      updateProfile,
       resetDemo,
     };
-  }, [data, addTransaction, removeTransaction, restoreTransaction, addCategory, addGoal, resetDemo]);
+  }, [
+    state,
+    isDemo,
+    repository.source,
+    status,
+    loadError,
+    reload,
+    addTransaction,
+    updateTransaction,
+    removeTransaction,
+    restoreTransaction,
+    addCategory,
+    updateCategory,
+    archiveCategory,
+    setCategoryBudget,
+    setMonthTargets,
+    addGoal,
+    updateGoal,
+    removeGoal,
+    updateRecurring,
+    removeRecurring,
+    updateProfile,
+    resetDemo,
+  ]);
 
   return <BudgetContext.Provider value={value}>{children}</BudgetContext.Provider>;
-}
-
-/** Les dépenses avant les revenus et l'épargne ; « Autres » reste en fin de liste des dépenses. */
-function groupOrder(category: Category): number {
-  if (category.group === "revenus") return 2;
-  if (category.group === "epargne") return 3;
-  return category.id === "autres" ? 1 : 0;
 }
 
 export function useBudget(): BudgetContextValue {

@@ -10,13 +10,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Money } from "@/components/ui/money";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectPill } from "@/components/ui/select-pill";
-import { getAccount } from "@/config/accounts";
+import { findAccount } from "@/config/accounts";
 import { availableMonths, groupByDay, monthTransactions, monthUpcoming, signedAmount, total } from "@/lib/budget";
 import { formatDayHeading, formatMonth, formatShortDate } from "@/lib/dates";
 import { normalizeText } from "@/lib/text";
 import { useBudget, useCategoryLookup } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
-import type { TransactionKind } from "@/types/finance";
+import type { TransactionKind, UpcomingItem } from "@/types/finance";
 
 type KindFilter = "all" | TransactionKind;
 
@@ -30,7 +30,7 @@ const kindFilters: { value: KindFilter; label: string }[] = [
 export function TransactionsScreen() {
   const data = useBudget();
   const categoryOf = useCategoryLookup();
-  const { openAdd, openTransaction, highlightId } = useUI();
+  const { openAdd, openTransaction, openRecurring, highlightId } = useUI();
   const [kind, setKind] = useState<KindFilter>("all");
   const [month, setMonth] = useState(data.currentMonth);
   const [categoryId, setCategoryId] = useState("all");
@@ -45,7 +45,14 @@ export function TransactionsScreen() {
   const ofMonth = monthTransactions(data, month);
   const visible = ofMonth.filter((t) => (kind === "all" || t.kind === kind) && matches(t.label, t.categoryId));
   const groups = groupByDay(visible);
-  const upcoming = monthUpcoming(data, month).filter((u) => (kind === "all" || kind === "expense") && matches(u.label, u.categoryId));
+  const upcoming = monthUpcoming(data, month).filter((u) => (kind === "all" || kind === u.kind) && matches(u.label, u.categoryId));
+  const upcomingSigned = (u: UpcomingItem) => (u.kind === "income" ? u.amount : -u.amount);
+  const defaultAccount = data.accounts.find((a) => a.type === "checking")?.id;
+  const openUpcoming = (u: UpcomingItem) => {
+    const planned = u.origin === "planned" ? data.allTransactions.find((t) => t.id === u.id) : undefined;
+    if (planned) openTransaction(planned);
+    else if (u.recurrenceId) openRecurring(u.recurrenceId);
+  };
 
   const incoming = total(ofMonth.filter((t) => t.kind === "income").map((t) => t.amount));
   const outgoing = total(ofMonth.filter((t) => t.kind !== "income").map((t) => t.amount));
@@ -141,7 +148,7 @@ export function TransactionsScreen() {
             <section className="animate-rise">
               <div className="mb-2 flex items-baseline justify-between px-1">
                 <h2 className="text-sm font-semibold text-muted">À venir</h2>
-                <Money value={-total(upcoming.map((u) => u.amount))} className="tabular text-sm text-muted" />
+                <Money value={total(upcoming.map(upcomingSigned))} sign="always" className="tabular text-sm text-muted" />
               </div>
               <Card padded={false} className="p-2">
                 <ul>
@@ -150,9 +157,12 @@ export function TransactionsScreen() {
                       key={u.id}
                       label={u.label}
                       category={categoryOf(u.categoryId)}
-                      subtitle={`Prévu le ${formatShortDate(u.date)} · ${categoryOf(u.categoryId).label}`}
-                      amount={-u.amount}
+                      subtitle={`${u.origin === "recurring" ? "Échéance" : "Prévu"} le ${formatShortDate(u.date)} · ${categoryOf(u.categoryId).label}`}
+                      amount={upcomingSigned(u)}
+                      recurring={u.origin === "recurring" || Boolean(u.recurrenceId)}
                       planned
+                      highlighted={u.id === highlightId}
+                      onClick={() => openUpcoming(u)}
                     />
                   ))}
                 </ul>
@@ -176,7 +186,7 @@ export function TransactionsScreen() {
                         key={t.id}
                         label={t.label}
                         category={category}
-                        subtitle={[goal ? `Épargne · ${goal.label}` : category.label, t.accountId !== "courant" ? getAccount(t.accountId).label : null].filter(Boolean).join(" · ")}
+                        subtitle={[goal ? `Épargne · ${goal.label}` : category.label, t.accountId !== defaultAccount ? findAccount(data.accounts, t.accountId).label : null].filter(Boolean).join(" · ")}
                         amount={signedAmount(t)}
                         recurring={t.recurrence !== undefined && t.recurrence !== "none"}
                         highlighted={t.id === highlightId}
@@ -191,9 +201,19 @@ export function TransactionsScreen() {
 
           {groups.length === 0 && upcoming.length === 0 && (
             <Card>
-              <EmptyState emoji="🔍" title="Aucune transaction trouvée">
-                Essaie un autre mot, un autre mois ou une autre catégorie.
-              </EmptyState>
+              {filtersActive ? (
+                <EmptyState emoji="🔍" title="Aucune transaction trouvée">
+                  Essaie un autre mot, un autre mois ou une autre catégorie.
+                </EmptyState>
+              ) : (
+                <EmptyState emoji="🧾" title="Aucune opération ce mois-ci">
+                  <span className="block">Ajoute ta première dépense ou ton premier revenu : tout se met à jour automatiquement.</span>
+                  <Button variant="soft" size="sm" onClick={() => openAdd()} className="mt-4">
+                    <Plus size={16} strokeWidth={2.4} aria-hidden />
+                    Ajouter une opération
+                  </Button>
+                </EmptyState>
+              )}
             </Card>
           )}
         </div>

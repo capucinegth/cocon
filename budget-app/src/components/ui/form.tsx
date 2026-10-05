@@ -124,3 +124,8 @@ export function TonePicker({ value, options, onChange }: { value: Tone; options:
     </div>
   );
 }
+
+/** Montant → texte du champ (« 54,2 »), vide pour zéro. */
+export function amountToInput(amount: number | undefined): string {
+  return amount ? String(Math.round(amount * 100) / 100).replace(".", ",") : "";
+}

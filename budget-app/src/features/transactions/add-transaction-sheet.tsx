@@ -4,17 +4,21 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { ChoiceChip } from "@/components/ui/choice-chip";
-import { AmountInput, FormField, TextInput } from "@/components/ui/form";
+import { AmountInput, FormField, TextInput, amountToInput } from "@/components/ui/form";
+import { FormError } from "@/components/ui/form-error";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
-import { getAccount, quickAddAccountIds } from "@/config/accounts";
+import { quickAddAccounts } from "@/config/accounts";
 import { isExpenseCategory } from "@/config/categories";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { cn } from "@/lib/cn";
 import { addDays } from "@/lib/dates";
 import { formatMoney, formatPercent, parseAmountInput } from "@/lib/format";
+import { errorMessage } from "@/services/repository";
 import { useBudget } from "@/store/budget-store";
+import { defaultAccountId, savingCategoryId } from "@/store/budget-state";
 import { useUI, type AddPreset } from "@/store/ui-store";
-import type { AccountId, CategoryId, Recurrence, TransactionKind } from "@/types/finance";
+import type { AccountId, CategoryId, Recurrence, Transaction, TransactionKind } from "@/types/finance";
 
 type DateChoice = "today" | "yesterday" | "other";
 
@@ -24,6 +28,14 @@ const kindCopy: Record<TransactionKind, { label: string; placeholder: string; do
   saving: { label: "Épargne", placeholder: "Ex. Virement du mois", done: "Épargne ajoutée" },
 };
 
+/** Jusqu'où une opération peut être prévue à l'avance. */
+const MAX_DAYS_AHEAD = 366;
+
+function initialDateChoice(date: string | undefined, today: string): DateChoice {
+  if (!date || date === today) return "today";
+  return date === addDays(today, -1) ? "yesterday" : "other";
+}
+
 const recurrenceOptions: { value: Recurrence; label: string }[] = [
   { value: "none", label: "Une fois" },
   { value: "weekly", label: "Chaque semaine" },
@@ -31,45 +43,66 @@ const recurrenceOptions: { value: Recurrence; label: string }[] = [
 ];
 
 function AddTransactionForm({ preset }: { preset: AddPreset }) {
-  const { today, categories, goals, addTransaction, removeTransaction } = useBudget();
-  const { closeSheet, showToast, highlight } = useUI();
+  const { today, categories, goals, accounts, addTransaction, updateTransaction, removeTransaction } = useBudget();
+  const { closeSheet, showToast, showError, highlight } = useUI();
+  const editing: Transaction | undefined = preset.transaction;
 
-  const [kind, setKind] = useState<TransactionKind>(preset.kind ?? "expense");
-  const [amountText, setAmountText] = useState("");
-  const [label, setLabel] = useState("");
-  const [categoryId, setCategoryId] = useState<CategoryId | null>(null);
-  const [goalId, setGoalId] = useState<string | null>(preset.goalId ?? null);
-  const [accountId, setAccountId] = useState<AccountId>("courant");
-  const [dateChoice, setDateChoice] = useState<DateChoice>("today");
-  const [otherDate, setOtherDate] = useState(addDays(today, -2));
+  const [kind, setKind] = useState<TransactionKind>(editing?.kind ?? preset.kind ?? "expense");
+  const [amountText, setAmountText] = useState(amountToInput(editing?.amount));
+  const [label, setLabel] = useState(editing?.label ?? "");
+  const [categoryId, setCategoryId] = useState<CategoryId | null>(editing && editing.kind !== "saving" ? editing.categoryId : null);
+  const [goalId, setGoalId] = useState<string | null>(editing?.goalId ?? preset.goalId ?? null);
+  const [accountId, setAccountId] = useState<AccountId>(editing?.accountId ?? defaultAccountId({ accounts }));
+  const [dateChoice, setDateChoice] = useState<DateChoice>(initialDateChoice(editing?.date, today));
+  const [otherDate, setOtherDate] = useState(editing?.date ?? addDays(today, -2));
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
+  const { pending, error, run } = useAsyncAction();
 
   const amount = parseAmountInput(amountText);
   const date = dateChoice === "today" ? today : dateChoice === "yesterday" ? addDays(today, -1) : otherDate;
-  const categoryOptions = categories.filter((c) => (kind === "income" ? c.group === "revenus" : isExpenseCategory(c)));
+  const categoryOptions = categories.filter(
+    (c) => (!c.archived || c.id === editing?.categoryId) && (kind === "income" ? c.group === "revenus" : isExpenseCategory(c)),
+  );
+  const accountOptions = quickAddAccounts(accounts).concat(
+    accounts.filter((a) => a.id === accountId && !quickAddAccounts(accounts).some((q) => q.id === a.id)),
+  );
   const needsCategory = kind !== "saving";
-  const canSubmit = amount > 0 && (!needsCategory || categoryId !== null);
+  const canSubmit = amount > 0 && (!needsCategory || categoryId !== null) && !pending;
   const signed = kind === "income" ? amount : -amount;
   const copy = kindCopy[kind];
+  const isFuture = date > today;
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
-    const transaction = addTransaction({
+    const input = {
       amount,
       kind,
-      categoryId: kind === "saving" ? "epargne" : (categoryId ?? "autres"),
+      categoryId: kind === "saving" ? savingCategoryId({ categories }) : (categoryId as CategoryId),
       goalId: kind === "saving" ? (goalId ?? undefined) : undefined,
       accountId,
       date,
       label,
-      recurrence,
+    };
+    let saved: Transaction | undefined;
+    const ok = await run(async () => {
+      saved = editing
+        ? await updateTransaction(editing, { ...input, note: editing.note })
+        : await addTransaction({ ...input, recurrence });
     });
+    if (!ok || !saved) return;
+    const transaction = saved;
     closeSheet();
     highlight(transaction.id);
-    showToast(`${copy.done} · ${formatMoney(signed, { sign: "always" })}`, {
+    if (editing) {
+      showToast("Opération modifiée");
+      return;
+    }
+    showToast(`${isFuture ? "Opération prévue" : copy.done} · ${formatMoney(signed, { sign: "always" })}`, {
       label: "Annuler",
-      onAction: () => removeTransaction(transaction),
+      onAction: () => {
+        removeTransaction(transaction, { withRecurrence: true }).catch((cause) => showError(errorMessage(cause)));
+      },
     });
   }
 
@@ -87,7 +120,7 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
           className="w-full"
         />
 
-        <AmountInput label="Montant en euros" value={amountText} onChange={setAmountText} prefix={kind === "income" ? "+" : "−"} autoFocus />
+        <AmountInput label="Montant en euros" value={amountText} onChange={setAmountText} prefix={kind === "income" ? "+" : "−"} autoFocus={!editing} />
 
         <label className="block">
           <span className="mb-2.5 block text-sm font-semibold text-muted">
@@ -99,6 +132,7 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
         {kind === "saving" ? (
           <FormField label="Vers quel objectif ?">
             <div className="flex flex-col gap-2">
+              {goals.length === 0 && <p className="text-[13px] text-muted">Tu n&apos;as pas encore d&apos;objectif : l&apos;épargne restera « libre ».</p>}
               {goals.map((goal) => {
                 const selected = goal.id === goalId;
                 return (
@@ -115,12 +149,12 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
                     <CategoryBadge emoji={goal.emoji} tone={goal.tone} size="sm" />
                     <span className="min-w-0 flex-1 break-words text-[15px] font-semibold">{goal.label}</span>
                     <span className={cn("text-[13px] font-medium", selected ? "text-white/80" : "text-muted")}>
-                      {formatPercent(goal.saved / goal.target)}
+                      {formatPercent(goal.target > 0 ? Math.min(goal.saved / goal.target, 1) : 0)}
                     </span>
                   </button>
                 );
               })}
-              <p className="text-[13px] text-muted">Sans objectif choisi, l&apos;épargne reste « libre ».</p>
+              {goals.length > 0 && <p className="text-[13px] text-muted">Sans objectif choisi, l&apos;épargne reste « libre ».</p>}
             </div>
           </FormField>
         ) : (
@@ -165,41 +199,60 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
               type="date"
               aria-label="Choisir une date"
               value={otherDate}
-              max={today}
+              max={addDays(today, MAX_DAYS_AHEAD)}
               onChange={(event) => event.target.value && setOtherDate(event.target.value)}
               className="mt-3 animate-fade font-medium"
             />
           )}
+          {isFuture && (
+            <p className="mt-2 text-[13px] text-muted">Date à venir : l&apos;opération apparaîtra dans « À venir » et sera déjà déduite de ton disponible.</p>
+          )}
         </FormField>
 
-        <FormField label="Récurrence">
-          <div className="flex flex-wrap gap-2">
-            {recurrenceOptions.map((option) => (
-              <ChoiceChip key={option.value} selected={recurrence === option.value} onClick={() => setRecurrence(option.value)}>
-                {option.label}
-              </ChoiceChip>
-            ))}
-          </div>
-        </FormField>
+        {editing ? (
+          editing.recurrenceId && (
+            <p className="rounded-2xl bg-lilac-50 px-4 py-3 text-[13px] text-ink-soft">
+              Cette opération fait partie d&apos;une récurrence : seule cette occurrence est modifiée.
+            </p>
+          )
+        ) : (
+          <FormField label="Récurrence">
+            <div className="flex flex-wrap gap-2">
+              {recurrenceOptions.map((option) => (
+                <ChoiceChip key={option.value} selected={recurrence === option.value} onClick={() => setRecurrence(option.value)}>
+                  {option.label}
+                </ChoiceChip>
+              ))}
+            </div>
+          </FormField>
+        )}
 
-        <FormField label="Compte">
-          <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
-            {quickAddAccountIds.map((id) => {
-              const account = getAccount(id);
-              return (
-                <ChoiceChip key={id} selected={id === accountId} onClick={() => setAccountId(id)}>
+        {accountOptions.length > 0 && (
+          <FormField label="Compte">
+            <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
+              {accountOptions.map((account) => (
+                <ChoiceChip key={account.id} selected={account.id === accountId} onClick={() => setAccountId(account.id)}>
                   <span aria-hidden>{account.emoji}</span>
                   {account.label}
                 </ChoiceChip>
-              );
-            })}
-          </div>
-        </FormField>
+              ))}
+            </div>
+          </FormField>
+        )}
       </div>
 
       <div className="sticky bottom-0 bg-surface/95 px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 backdrop-blur">
-        <Button type="submit" size="lg" disabled={!canSubmit} className="w-full">
-          {canSubmit ? `Ajouter ${formatMoney(signed, { sign: "always" })}` : amount > 0 ? "Choisis une catégorie" : "Saisis un montant"}
+        <FormError message={error} className="mb-3" />
+        <Button type="submit" size="lg" disabled={!canSubmit} className="w-full" aria-busy={pending || undefined}>
+          {pending
+            ? "Enregistrement…"
+            : canSubmit
+              ? editing
+                ? `Enregistrer ${formatMoney(signed, { sign: "always" })}`
+                : `Ajouter ${formatMoney(signed, { sign: "always" })}`
+              : amount > 0
+                ? "Choisis une catégorie"
+                : "Saisis un montant"}
         </Button>
       </div>
     </form>
@@ -212,7 +265,7 @@ export function AddTransactionSheet() {
   const active = sheet?.type === "add" ? sheet : null;
 
   return (
-    <Sheet open={isSheetOpen && active !== null} onClose={closeSheet} title="Nouvelle opération">
+    <Sheet open={isSheetOpen && active !== null} onClose={closeSheet} title={active?.preset.transaction ? "Modifier l'opération" : "Nouvelle opération"}>
       {active && <AddTransactionForm key={sheetSession} preset={active.preset} />}
     </Sheet>
   );

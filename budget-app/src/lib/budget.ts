@@ -1,12 +1,11 @@
 /**
- * Calculs d'affichage du prototype (sommes simples, aucune règle métier avancée).
- * Fonctions pures, toutes paramétrées par un mois (AAAA-MM) : faciles à tester
- * et à brancher plus tard sur de vraies données.
+ * Calculs métier de Cocon : fonctions pures, paramétrées par un mois (AAAA-MM),
+ * identiques en démo et avec les vraies données. Testées dans tests/unit.
  */
 import { appConfig } from "@/config/app";
 import { findCategory } from "@/config/categories";
-import type { BudgetData } from "@/data";
-import type { Category, CategoryId, SavingsGoal, Transaction, UpcomingExpense } from "@/types/finance";
+import type { BudgetData } from "@/types/budget-data";
+import type { BudgetPlan, Category, CategoryId, SavingsGoal, Transaction, UpcomingItem } from "@/types/finance";
 import { dayOfMonth, daysInMonth, monthKey } from "./dates";
 import { roundCents } from "./format";
 
@@ -18,29 +17,48 @@ export function monthTransactions(data: Pick<BudgetData, "transactions">, month:
   return data.transactions.filter((t) => monthKey(t.date) === month);
 }
 
-/** Mouvements encore à venir dans le mois (uniquement pour le mois en cours). */
-export function monthUpcoming(data: Pick<BudgetData, "upcoming" | "today">, month: string): UpcomingExpense[] {
+/** Mouvements encore à venir dans le mois (à partir d'aujourd'hui). */
+export function monthUpcoming(data: Pick<BudgetData, "upcoming" | "today">, month: string): UpcomingItem[] {
   return data.upcoming
     .filter((u) => monthKey(u.date) === month && u.date >= data.today)
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Mois consultables : ceux qui ont des transactions détaillées, plus le mois en cours. */
+/** Mois consultables : ceux qui ont des opérations, plus le mois en cours. */
 export function availableMonths(data: Pick<BudgetData, "transactions" | "today">): string[] {
   const months = new Set(data.transactions.map((t) => monthKey(t.date)));
   months.add(monthKey(data.today));
   return [...months].sort();
 }
 
+/**
+ * Budget applicable à un mois : celui du mois, sinon le dernier budget antérieur
+ * (reconduit automatiquement tant que l'utilisateur ne le modifie pas).
+ */
+export function planFor(data: Pick<BudgetData, "plans">, month: string): (BudgetPlan & { inherited: boolean }) | null {
+  const exact = data.plans.find((p) => p.month === month);
+  if (exact) return { ...exact, inherited: false };
+  const previous = [...data.plans].filter((p) => p.month < month).sort((a, b) => b.month.localeCompare(a.month))[0];
+  return previous ? { ...previous, month, inherited: true } : null;
+}
+
 const isFixed = (categories: Category[], id: CategoryId) => findCategory(categories, id).group === "fixes";
 
-export type BudgetHealth = "comfortable" | "attention" | "tight" | "closed";
+/** « empty » : rien de saisi pour ce mois (nouveau compte) — on n'affiche pas d'alerte. */
+export type BudgetHealth = "comfortable" | "attention" | "tight" | "closed" | "empty";
 
 export interface MonthSummary {
   month: string;
   isCurrent: boolean;
   isPast: boolean;
+  /** Revenus retenus pour le mois : reçus + prévus + attendus selon le budget. */
   income: number;
+  /** Revenus déjà reçus. */
+  incomeReceived: number;
+  /** Revenus prévus (opérations datées ou récurrentes à venir). */
+  incomeUpcoming: number;
+  /** Revenus attendus d'après le budget, pas encore saisis. */
+  incomeExpected: number;
   /** Charges fixes du mois : payées + à venir. */
   fixed: number;
   /** Dépenses du quotidien : déjà dépensées + prévues. */
@@ -51,13 +69,13 @@ export interface MonthSummary {
   variableUpcoming: number;
   /** Dépenses déjà passées (fixes + quotidien). */
   paid: number;
-  /** Tout ce qui est encore à venir dans le mois. */
+  /** Sorties encore à venir dans le mois (dépenses + épargne). */
   upcoming: number;
   /** fixed + variable */
   committed: number;
   /** Épargne déjà versée ce mois-ci. */
   saved: number;
-  /** Épargne prévue au budget (ou versée, si c'est plus). */
+  /** Épargne prévue au budget (ou versée / programmée, si c'est plus). */
   savingsReserved: number;
   /** Ce qui reste réellement à disposition (ou ce qu'il est resté, pour un mois passé). */
   remaining: number;
@@ -68,6 +86,8 @@ export interface MonthSummary {
   perDay: number;
   /** Budget prévu pour les dépenses du quotidien. */
   variableBudget: number;
+  /** Aucune donnée pour ce mois (nouvel utilisateur). */
+  isEmpty: boolean;
   health: BudgetHealth;
 }
 
@@ -76,20 +96,26 @@ export function getMonthSummary(data: BudgetData, month: string): MonthSummary {
   const isCurrent = month === current;
   const isPast = month < current;
   const list = monthTransactions(data, month);
-  const upcomingItems = isCurrent ? monthUpcoming(data, month) : [];
+  const upcomingItems = isPast ? [] : monthUpcoming(data, month);
+  const plan = isPast ? null : planFor(data, month);
 
   const expenses = list.filter((t) => t.kind === "expense");
-  const income = total(list.filter((t) => t.kind === "income").map((t) => t.amount));
-  const saved = total(list.filter((t) => t.kind === "saving").map((t) => t.amount));
-  const fixed = total([...expenses, ...upcomingItems].filter((t) => isFixed(data.categories, t.categoryId)).map((t) => t.amount));
-  const variable = total([...expenses, ...upcomingItems].filter((t) => !isFixed(data.categories, t.categoryId)).map((t) => t.amount));
-  const paid = total(expenses.map((t) => t.amount));
-  const upcoming = total(upcomingItems.map((u) => u.amount));
-  const fixedUpcoming = total(upcomingItems.filter((u) => isFixed(data.categories, u.categoryId)).map((u) => u.amount));
-  const variableUpcoming = roundCents(upcoming - fixedUpcoming);
+  const upcomingExpenses = upcomingItems.filter((u) => u.kind === "expense");
+  const incomeReceived = total(list.filter((t) => t.kind === "income").map((t) => t.amount));
+  const incomeUpcoming = total(upcomingItems.filter((u) => u.kind === "income").map((u) => u.amount));
+  const incomeExpected = plan ? Math.max(roundCents(plan.incomeTarget - incomeReceived - incomeUpcoming), 0) : 0;
+  const income = roundCents(incomeReceived + incomeUpcoming + incomeExpected);
 
-  const plannedSavings = isCurrent ? (data.plan.planned.epargne ?? 0) : 0;
-  const savingsReserved = Math.max(plannedSavings, saved);
+  const saved = total(list.filter((t) => t.kind === "saving").map((t) => t.amount));
+  const savingsUpcoming = total(upcomingItems.filter((u) => u.kind === "saving").map((u) => u.amount));
+  const fixed = total([...expenses, ...upcomingExpenses].filter((t) => isFixed(data.categories, t.categoryId)).map((t) => t.amount));
+  const variable = total([...expenses, ...upcomingExpenses].filter((t) => !isFixed(data.categories, t.categoryId)).map((t) => t.amount));
+  const paid = total(expenses.map((t) => t.amount));
+  const fixedUpcoming = total(upcomingExpenses.filter((u) => isFixed(data.categories, u.categoryId)).map((u) => u.amount));
+  const variableUpcoming = roundCents(total(upcomingExpenses.map((u) => u.amount)) - fixedUpcoming);
+  const upcoming = roundCents(total(upcomingExpenses.map((u) => u.amount)) + savingsUpcoming);
+
+  const savingsReserved = Math.max(plan?.savingsTarget ?? 0, roundCents(saved + savingsUpcoming));
   const committed = roundCents(fixed + variable);
   const remaining = roundCents(income - committed - savingsReserved);
 
@@ -97,16 +123,22 @@ export function getMonthSummary(data: BudgetData, month: string): MonthSummary {
   const day = isCurrent ? dayOfMonth(data.today) : isPast ? monthDays : 1;
   const daysLeft = isCurrent ? monthDays - day + 1 : isPast ? 0 : monthDays;
 
-  const variableBudget = isCurrent
-    ? total(data.categories.filter((c) => c.group === "variables").map((c) => data.plan.planned[c.id] ?? 0))
-    : variable;
+  const variableBudget = plan
+    ? total(data.categories.filter((c) => c.group === "variables").map((c) => plan.planned[c.id] ?? 0))
+    : isPast
+      ? variable
+      : 0;
   const perDay = isPast ? variable / monthDays : daysLeft > 0 ? remaining / daysLeft : remaining;
+  const isEmpty = list.length === 0 && upcomingItems.length === 0 && income === 0 && savingsReserved === 0;
 
   return {
     month,
     isCurrent,
     isPast,
     income,
+    incomeReceived,
+    incomeUpcoming,
+    incomeExpected,
     fixed,
     variable,
     fixedUpcoming,
@@ -122,13 +154,15 @@ export function getMonthSummary(data: BudgetData, month: string): MonthSummary {
     daysLeft,
     perDay,
     variableBudget,
-    health: isPast ? "closed" : getBudgetHealth(remaining, perDay, variableBudget / monthDays),
+    isEmpty,
+    health: isPast ? "closed" : isEmpty ? "empty" : getBudgetHealth(remaining, perDay, variableBudget / monthDays),
   };
 }
 
 /** Compare le disponible par jour au budget quotidien moyen prévu. */
 export function getBudgetHealth(remaining: number, perDay: number, dailyBudget: number): BudgetHealth {
-  if (remaining <= 0 || dailyBudget <= 0) return remaining > 0 ? "comfortable" : "tight";
+  if (remaining <= 0) return "tight";
+  if (dailyBudget <= 0) return "comfortable";
   const ratio = perDay / dailyBudget;
   if (ratio >= appConfig.healthThresholds.comfortable) return "comfortable";
   if (ratio >= appConfig.healthThresholds.attention) return "attention";
@@ -153,9 +187,9 @@ export function getCategoryUsage(category: Category, data: BudgetData, month: st
       .filter((t) => t.categoryId === category.id && t.kind !== "income")
       .map((t) => t.amount),
   );
-  const upcomingItems = monthUpcoming(data, month).filter((u) => u.categoryId === category.id);
+  const upcomingItems = monthUpcoming(data, month).filter((u) => u.categoryId === category.id && u.kind !== "income");
   const upcoming = total(upcomingItems.map((u) => u.amount));
-  const planned = data.plan.month === month ? (data.plan.planned[category.id] ?? 0) : 0;
+  const planned = planFor(data, month)?.planned[category.id] ?? 0;
 
   return {
     category,
@@ -171,7 +205,7 @@ export function getCategoryUsage(category: Category, data: BudgetData, month: st
 /** Catégories de dépenses du budget, dans l'ordre de configuration. */
 export function getExpenseUsages(data: BudgetData, month: string): CategoryUsage[] {
   return data.categories
-    .filter((c) => c.group === "fixes" || c.group === "variables")
+    .filter((c) => (c.group === "fixes" || c.group === "variables") && !c.archived)
     .map((category) => getCategoryUsage(category, data, month));
 }
 
@@ -190,7 +224,9 @@ export function getSpendingByCategory(data: BudgetData, month: string): { catego
   monthTransactions(data, month)
     .filter((t) => t.kind === "expense")
     .forEach((t) => add(t.categoryId, t.amount));
-  monthUpcoming(data, month).forEach((u) => add(u.categoryId, u.amount));
+  monthUpcoming(data, month)
+    .filter((u) => u.kind === "expense")
+    .forEach((u) => add(u.categoryId, u.amount));
 
   return [...amounts.entries()]
     .map(([id, amount]) => ({ category: findCategory(data.categories, id), amount: roundCents(amount) }))
@@ -263,7 +299,16 @@ export function groupByDay(transactions: Transaction[]): DayGroup[] {
   return [...groups.entries()].map(([date, items]) => ({ date, items, net: total(items.map(signedAmount)) }));
 }
 
-/** Répartit l'épargne versée ce mois-ci entre les objectifs, dans l'ordre. */
+/** Versements du mois rattachés à chaque objectif. */
+export function goalContributions(data: Pick<BudgetData, "transactions">, month: string): Map<string, number> {
+  const result = new Map<string, number>();
+  monthTransactions(data, month)
+    .filter((t) => t.kind === "saving" && t.goalId)
+    .forEach((t) => result.set(t.goalId!, roundCents((result.get(t.goalId!) ?? 0) + t.amount)));
+  return result;
+}
+
+/** Répartit l'épargne non rattachée à un objectif entre les objectifs, dans l'ordre. */
 export function allocateSavings(goals: SavingsGoal[], saved: number): { goal: SavingsGoal; done: number }[] {
   return goals.reduce<{ lines: { goal: SavingsGoal; done: number }[]; left: number }>(
     ({ lines, left }, goal) => {

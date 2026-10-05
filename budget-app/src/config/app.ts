@@ -1,7 +1,7 @@
 export const appConfig = {
   name: "Cocon",
   tagline: "Ton budget, en douceur",
-  version: "0.2",
+  version: "0.3",
   /**
    * Date « du jour » figée pour la démo : tous les écrans restent cohérents
    * (18 jours restants en septembre 2026). À remplacer par la vraie date

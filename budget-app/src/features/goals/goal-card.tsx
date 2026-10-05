@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, Plus } from "lucide-react";
+import { Flag, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -24,9 +24,10 @@ interface GoalCardProps {
   goal: SavingsGoal;
   today: string;
   onContribute: () => void;
+  onEdit?: () => void;
 }
 
-export function GoalCard({ goal, today, onContribute }: GoalCardProps) {
+export function GoalCard({ goal, today, onContribute, onEdit }: GoalCardProps) {
   const progress = getGoalProgress(goal, today);
   const pace = paceCopy[progress.pace];
 
@@ -77,11 +78,16 @@ export function GoalCard({ goal, today, onContribute }: GoalCardProps) {
         <p className="mt-1.5 text-[13px] text-ink-soft">À ce rythme : {formatMonthLower(progress.eta)}</p>
       )}
 
-      <div className="mt-auto pt-5">
-        <Button variant="white" onClick={onContribute} className="w-full">
+      <div className="mt-auto flex gap-2 pt-5">
+        <Button variant="white" onClick={onContribute} className="flex-1">
           <Plus size={17} strokeWidth={2.4} aria-hidden />
           Verser
         </Button>
+        {onEdit && (
+          <Button variant="white" size="icon" onClick={onEdit} aria-label={`Modifier l'objectif ${goal.label}`}>
+            <Pencil size={17} aria-hidden />
+          </Button>
+        )}
       </div>
     </article>
   );

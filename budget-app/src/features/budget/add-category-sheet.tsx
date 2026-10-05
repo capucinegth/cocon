@@ -4,30 +4,37 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { AmountInput, EmojiPicker, FormField, TextInput, TonePicker } from "@/components/ui/form";
+import { FormError } from "@/components/ui/form-error";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
 import { emojiChoices, toneChoices } from "@/config/categories";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { parseAmountInput } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import type { Tone } from "@/types/finance";
 
 function AddCategoryForm() {
-  const { addCategory } = useBudget();
+  const { addCategory, categories } = useBudget();
   const { closeSheet, showToast } = useUI();
+  const { pending, error, run } = useAsyncAction();
   const [label, setLabel] = useState("");
   const [group, setGroup] = useState<"variables" | "fixes">("variables");
   const [budgetText, setBudgetText] = useState("");
   const [emoji, setEmoji] = useState("🐾");
   const [tone, setTone] = useState<Tone>("blush");
-  const canSubmit = label.trim().length > 0;
+  const duplicate = categories.some((c) => !c.archived && c.label.toLocaleLowerCase("fr") === label.trim().toLocaleLowerCase("fr"));
+  const canSubmit = label.trim().length > 0 && !duplicate && !pending;
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
-    const category = addCategory({ label, emoji, group, tone, budget: parseAmountInput(budgetText) });
+    const ok = await run(async () => {
+      await addCategory({ label, emoji, group, tone, budget: parseAmountInput(budgetText) });
+    });
+    if (!ok) return;
     closeSheet();
-    showToast(`Catégorie « ${category.label} » créée`);
+    showToast(`Catégorie « ${label.trim()} » créée`);
   }
 
   return (
@@ -73,8 +80,9 @@ function AddCategoryForm() {
       </div>
 
       <div className="sticky bottom-0 bg-surface/95 px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 backdrop-blur">
-        <Button type="submit" size="lg" disabled={!canSubmit} className="w-full">
-          {canSubmit ? "Créer la catégorie" : "Donne-lui un nom"}
+        <FormError message={error} className="mb-3" />
+        <Button type="submit" size="lg" disabled={!canSubmit} className="w-full" aria-busy={pending || undefined}>
+          {pending ? "Création…" : duplicate ? "Ce nom existe déjà" : label.trim() ? "Créer la catégorie" : "Donne-lui un nom"}
         </Button>
       </div>
     </form>

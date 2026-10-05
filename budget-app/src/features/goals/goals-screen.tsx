@@ -22,7 +22,7 @@ export function GoalsScreen() {
         subtitle="Ce que tu construis, petit à petit"
         actions={
           <div className="hidden sm:block">
-            <Button onClick={openGoalSheet}>
+            <Button onClick={() => openGoalSheet()}>
               <Plus size={18} strokeWidth={2.4} aria-hidden />
               Nouvel objectif
             </Button>
@@ -39,7 +39,13 @@ export function GoalsScreen() {
               <Money value={totalSaved} />
             </p>
             <p className="mt-3 text-[15px] text-ink-soft">
-              sur <Money value={totalTarget} /> visés · {goals.length} objectif{goals.length > 1 ? "s" : ""}
+              {goals.length === 0 ? (
+                "Crée ton premier objectif : un voyage, un projet, un coussin de sécurité…"
+              ) : (
+                <>
+                  sur <Money value={totalTarget} /> visés · {goals.length} objectif{goals.length > 1 ? "s" : ""}
+                </>
+              )}
             </p>
           </div>
           <span className="inline-flex items-center gap-2 self-start rounded-full bg-surface/85 px-4 py-2.5 text-[15px] font-semibold shadow-sm sm:self-auto">
@@ -52,12 +58,17 @@ export function GoalsScreen() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3">
         {goals.map((goal, index) => (
           <div key={goal.id} className="animate-rise" style={{ animationDelay: `${(index + 1) * 60}ms` }}>
-            <GoalCard goal={goal} today={today} onContribute={() => openAdd({ kind: "saving", goalId: goal.id })} />
+            <GoalCard
+              goal={goal}
+              today={today}
+              onContribute={() => openAdd({ kind: "saving", goalId: goal.id })}
+              onEdit={() => openGoalSheet(goal.id)}
+            />
           </div>
         ))}
         <button
           type="button"
-          onClick={openGoalSheet}
+          onClick={() => openGoalSheet()}
           className="lift flex min-h-56 animate-rise flex-col items-center justify-center gap-3 rounded-card border-2 border-dashed border-blush-200 bg-surface/60 p-6 text-center transition-colors duration-200 hover:bg-blush-50"
           style={{ animationDelay: `${(goals.length + 1) * 60}ms` }}
         >

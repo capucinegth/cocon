@@ -3,10 +3,10 @@ import type {
   BudgetPlan,
   CategoryId,
   MonthHistoryPoint,
+  RecurringRule,
   SavingsGoal,
   Transaction,
   TransactionKind,
-  UpcomingExpense,
 } from "@/types/finance";
 
 /**
@@ -25,7 +25,7 @@ import type {
  * les mois et à la comparaison « même date, mois précédent » (−8 % au quotidien).
  */
 
-type Extra = Partial<Pick<Transaction, "note" | "recurrence" | "goalId" | "accountId">>;
+type Extra = Partial<Pick<Transaction, "note" | "recurrence" | "recurrenceId" | "goalId" | "accountId">>;
 
 function tx(
   id: string,
@@ -41,6 +41,8 @@ function tx(
 }
 
 const monthly = { recurrence: "monthly" } as const;
+/** Occurrence de septembre d'une règle récurrente de la démo. */
+const rule = (recurrenceId: string) => ({ recurrence: "monthly", recurrenceId }) as const;
 
 const august: Transaction[] = [
   tx("a01", "2026-08-01", "Monoprix", 41.3, "expense", "courses"),
@@ -80,55 +82,92 @@ const august: Transaction[] = [
 
 const september: Transaction[] = [
   tx("s01", "2026-09-02", "Monoprix", 32.15, "expense", "courses"),
-  tx("s02", "2026-09-04", "Box internet", 32.99, "expense", "abonnements", monthly),
+  tx("s02", "2026-09-04", "Box internet", 32.99, "expense", "abonnements", rule("r-box")),
   tx("s03", "2026-09-05", "Café Pinson", 18.5, "expense", "restaurants"),
   tx("s04", "2026-09-06", "Biocoop", 45.25, "expense", "courses"),
   tx("s05", "2026-09-06", "UGC Ciné", 13.5, "expense", "loisirs"),
   tx("s06", "2026-09-07", "SNCF", 38, "expense", "transport", { note: "Paris → Lyon" }),
-  tx("s07", "2026-09-08", "Forfait mobile", 19.99, "expense", "abonnements", monthly),
-  tx("s08", "2026-09-08", "iCloud+", 2.99, "expense", "abonnements", monthly),
+  tx("s07", "2026-09-08", "Forfait mobile", 19.99, "expense", "abonnements", rule("r-mobile")),
+  tx("s08", "2026-09-08", "iCloud+", 2.99, "expense", "abonnements", rule("r-icloud")),
   tx("s09", "2026-09-09", "Marché d'Aligre", 18.4, "expense", "courses", { accountId: "especes" }),
   tx("s10", "2026-09-09", "Pharmacie", 8.4, "expense", "sante"),
-  tx("s11", "2026-09-10", "Salle de sport", 32.92, "expense", "abonnements", monthly),
+  tx("s11", "2026-09-10", "Salle de sport", 32.92, "expense", "abonnements", rule("r-sport")),
   tx("s12", "2026-09-10", "Zara", 34.9, "expense", "shopping"),
   tx("s13", "2026-09-11", "Trattoria Mia", 23.5, "expense", "restaurants", { accountId: "joint" }),
-  tx("s14", "2026-09-12", "Salaire", 2150, "income", "salaire", monthly),
-  tx("s15", "2026-09-12", "Virement épargne", 300, "saving", "epargne", { ...monthly, note: "Réparti sur 3 objectifs" }),
+  tx("s14", "2026-09-12", "Salaire", 2150, "income", "salaire", rule("r-salaire")),
+  tx("s15", "2026-09-12", "Virement épargne", 300, "saving", "epargne", { ...rule("r-epargne"), note: "Réparti sur 3 objectifs" }),
   tx("s16", "2026-09-13", "Carrefour", 54.2, "expense", "courses"),
-  tx("s17", "2026-09-13", "Spotify", 11.12, "expense", "abonnements", monthly),
+  tx("s17", "2026-09-13", "Spotify", 11.12, "expense", "abonnements", rule("r-spotify")),
 ];
 
-export const demoTransactions: Transaction[] = [...august, ...september];
-
-export const demoUpcoming: UpcomingExpense[] = [
-  { id: "u1", label: "Loyer", amount: 650, categoryId: "logement", accountId: "courant", date: "2026-09-15" },
-  { id: "u2", label: "Électricité", amount: 72, categoryId: "logement", accountId: "courant", date: "2026-09-18" },
-  { id: "u3", label: "Courses prévues", amount: 80, categoryId: "courses", accountId: "courant", date: "2026-09-19" },
-  { id: "u4", label: "Netflix", amount: 17.99, categoryId: "abonnements", accountId: "courant", date: "2026-09-20" },
+/**
+ * Mouvements prévus d'ici la fin du mois : des opérations datées dans le futur.
+ * Elles apparaissent dans « À venir » et sont déjà déduites du disponible.
+ */
+const septemberPlanned: Transaction[] = [
+  tx("u1", "2026-09-15", "Loyer", 650, "expense", "logement", rule("r-loyer")),
+  tx("u2", "2026-09-18", "Électricité", 72, "expense", "logement"),
+  tx("u3", "2026-09-19", "Courses prévues", 80, "expense", "courses"),
+  tx("u4", "2026-09-20", "Netflix", 17.99, "expense", "abonnements", rule("r-netflix")),
 ];
 
-export const demoBudgetPlan: BudgetPlan = {
-  month: "2026-09",
-  planned: {
-    salaire: 2150,
-    logement: 722,
-    abonnements: 118,
-    courses: 300,
-    restaurants: 200,
-    transport: 120,
-    loisirs: 100,
-    shopping: 150,
-    sante: 60,
-    autres: 80,
-    epargne: 300,
+export const demoTransactions: Transaction[] = [...august, ...september, ...septemberPlanned];
+
+type RuleSeed = [id: string, label: string, amount: number, kind: TransactionKind, categoryId: CategoryId, next: string];
+
+/** Règles récurrentes : leur prochaine échéance tombe en octobre. */
+export const demoRecurring: RecurringRule[] = (
+  [
+    ["r-box", "Box internet", 32.99, "expense", "abonnements", "2026-10-04"],
+    ["r-mobile", "Forfait mobile", 19.99, "expense", "abonnements", "2026-10-08"],
+    ["r-icloud", "iCloud+", 2.99, "expense", "abonnements", "2026-10-08"],
+    ["r-sport", "Salle de sport", 32.92, "expense", "abonnements", "2026-10-10"],
+    ["r-salaire", "Salaire", 2150, "income", "salaire", "2026-10-12"],
+    ["r-epargne", "Virement épargne", 300, "saving", "epargne", "2026-10-12"],
+    ["r-spotify", "Spotify", 11.12, "expense", "abonnements", "2026-10-13"],
+    ["r-loyer", "Loyer", 650, "expense", "logement", "2026-10-15"],
+    ["r-netflix", "Netflix", 17.99, "expense", "abonnements", "2026-10-20"],
+  ] satisfies RuleSeed[]
+).map(([id, label, amount, kind, categoryId, nextOccurrence]) => ({
+  id,
+  label,
+  amount,
+  kind,
+  categoryId,
+  accountId: "courant",
+  frequency: "monthly",
+  nextOccurrence,
+  anchorDay: Number(nextOccurrence.slice(8, 10)),
+  isActive: true,
+}));
+
+export const demoBudgetPlans: BudgetPlan[] = [
+  {
+    month: "2026-09",
+    planned: {
+      logement: 722,
+      abonnements: 118,
+      courses: 300,
+      restaurants: 200,
+      transport: 120,
+      loisirs: 100,
+      shopping: 150,
+      sante: 60,
+      autres: 80,
+    },
+    savingsTarget: 300,
+    incomeTarget: 2150,
   },
-};
+];
 
-/** Montants à jour au 13 septembre (versements de septembre inclus). */
+/**
+ * Montants à jour au 13 septembre (versements de septembre inclus). Les virements
+ * de la démo sont « répartis » : ils ne sont pas rattachés à un objectif précis.
+ */
 export const demoGoals: SavingsGoal[] = [
-  { id: "g1", label: "Vacances", emoji: "🌴", tone: "lilac", saved: 1250, target: 2000, monthlyContribution: 100, deadline: "2027-06" },
-  { id: "g2", label: "MacBook", emoji: "💻", tone: "blush", saved: 850, target: 1800, monthlyContribution: 100, deadline: "2027-08" },
-  { id: "g3", label: "Fonds de sécurité", emoji: "🛡️", tone: "sage", saved: 2400, target: 5000, monthlyContribution: 100 },
+  { id: "g1", label: "Vacances", emoji: "🌴", tone: "lilac", saved: 1250, initialAmount: 1250, target: 2000, monthlyContribution: 100, deadline: "2027-06" },
+  { id: "g2", label: "MacBook", emoji: "💻", tone: "blush", saved: 850, initialAmount: 850, target: 1800, monthlyContribution: 100, deadline: "2027-08" },
+  { id: "g3", label: "Fonds de sécurité", emoji: "🛡️", tone: "sage", saved: 2400, initialAmount: 2400, target: 5000, monthlyContribution: 100 },
 ];
 
 /**

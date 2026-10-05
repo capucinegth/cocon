@@ -8,7 +8,7 @@ export function EmptyState({ emoji, title, children, className }: { emoji: strin
         {emoji}
       </span>
       <p className="mt-3 font-semibold">{title}</p>
-      {children && <p className="mt-1 max-w-xs text-sm text-muted">{children}</p>}
+      {children && <div className="mt-1 max-w-xs text-sm text-muted">{children}</div>}
     </div>
   );
 }

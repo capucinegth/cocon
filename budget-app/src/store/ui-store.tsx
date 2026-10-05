@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Transaction, TransactionKind } from "@/types/finance";
 
 export interface AddPreset {
   kind?: TransactionKind;
   goalId?: string;
+  /** Opération à modifier (sinon : nouvelle opération). */
+  transaction?: Transaction;
 }
 
 /** Une seule feuille modale ouverte à la fois. */
@@ -13,12 +15,19 @@ export type SheetState =
   | { type: "add"; preset: AddPreset }
   | { type: "transaction"; transaction: Transaction }
   | { type: "category" }
-  | { type: "goal" }
+  | { type: "categoryEdit"; categoryId: string; month: string }
+  | { type: "goal"; goalId?: string }
+  | { type: "recurring"; ruleId: string }
+  | { type: "targets"; month: string }
+  | { type: "profile" }
   | null;
+
+export type ToastTone = "success" | "error";
 
 interface Toast {
   id: number;
   message: string;
+  tone: ToastTone;
   actionLabel?: string;
   onAction?: () => void;
 }
@@ -32,10 +41,17 @@ interface UIContextValue {
   openAdd: (preset?: AddPreset) => void;
   openTransaction: (transaction: Transaction) => void;
   openCategorySheet: () => void;
-  openGoalSheet: () => void;
+  openCategoryEdit: (categoryId: string, month: string) => void;
+  /** Sans identifiant : nouvel objectif ; avec : modification. */
+  openGoalSheet: (goalId?: string) => void;
+  openRecurring: (ruleId: string) => void;
+  openTargets: (month: string) => void;
+  openProfile: () => void;
   closeSheet: () => void;
   toast: Toast | null;
   showToast: (message: string, action?: { label: string; onAction: () => void }) => void;
+  /** Message d'erreur (enregistrement impossible, connexion perdue…). */
+  showError: (message: string) => void;
   dismissToast: () => void;
   /** Dernière opération ajoutée : mise en évidence quelques secondes. */
   highlightId: string | null;
@@ -46,6 +62,8 @@ interface UIContextValue {
 }
 
 const UIContext = createContext<UIContextValue | null>(null);
+
+export const DISCREET_KEY = "cocon:discreet";
 
 export function UIProvider({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState<SheetState>(null);
@@ -64,18 +82,23 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const openAdd = useCallback((preset: AddPreset = {}) => open({ type: "add", preset }), [open]);
   const openTransaction = useCallback((transaction: Transaction) => open({ type: "transaction", transaction }), [open]);
   const openCategorySheet = useCallback(() => open({ type: "category" }), [open]);
-  const openGoalSheet = useCallback(() => open({ type: "goal" }), [open]);
+  const openCategoryEdit = useCallback((categoryId: string, month: string) => open({ type: "categoryEdit", categoryId, month }), [open]);
+  const openGoalSheet = useCallback((goalId?: string) => open({ type: "goal", goalId }), [open]);
+  const openRecurring = useCallback((ruleId: string) => open({ type: "recurring", ruleId }), [open]);
+  const openTargets = useCallback((month: string) => open({ type: "targets", month }), [open]);
+  const openProfile = useCallback(() => open({ type: "profile" }), [open]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   const showToast = useCallback((message: string, action?: { label: string; onAction: () => void }) => {
-    setToast({ id: Date.now(), message, actionLabel: action?.label, onAction: action?.onAction });
+    setToast({ id: Date.now(), message, tone: "success", actionLabel: action?.label, onAction: action?.onAction });
   }, []);
+  const showError = useCallback((message: string) => setToast({ id: Date.now(), message, tone: "error" }), []);
   const dismissToast = useCallback(() => setToast(null), []);
   const highlight = useCallback((id: string) => setHighlightId(id), []);
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), toast.actionLabel ? 5000 : 2800);
+    const timer = window.setTimeout(() => setToast(null), toast.actionLabel ? 5000 : toast.tone === "error" ? 6000 : 2800);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -85,8 +108,30 @@ export function UIProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [highlightId]);
 
+  // Mode discret : retenu sur cet appareil (appliqué avant l'affichage, voir layout.tsx)
+  // et, avec un compte, enregistré dans les préférences du profil.
   useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (window.localStorage.getItem(DISCREET_KEY) === "1") setDiscreet(true);
+    } catch {
+      // Stockage indisponible (navigation privée) : sans conséquence.
+    }
+  }, []);
+
+  const firstSync = useRef(true);
+  useEffect(() => {
+    // Premier passage : le script du layout a déjà appliqué la valeur enregistrée, on n'y touche pas.
+    if (firstSync.current) {
+      firstSync.current = false;
+      return;
+    }
     document.documentElement.toggleAttribute("data-discreet", discreet);
+    try {
+      window.localStorage.setItem(DISCREET_KEY, discreet ? "1" : "0");
+    } catch {
+      // Stockage indisponible : le mode discret reste actif pour cette visite.
+    }
   }, [discreet]);
 
   const value = useMemo(
@@ -97,17 +142,42 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openAdd,
       openTransaction,
       openCategorySheet,
+      openCategoryEdit,
       openGoalSheet,
+      openRecurring,
+      openTargets,
+      openProfile,
       closeSheet,
       toast,
       showToast,
+      showError,
       dismissToast,
       highlightId,
       highlight,
       discreet,
       setDiscreet,
     }),
-    [sheet, isSheetOpen, sheetSession, openAdd, openTransaction, openCategorySheet, openGoalSheet, closeSheet, toast, showToast, dismissToast, highlightId, highlight, discreet],
+    [
+      sheet,
+      isSheetOpen,
+      sheetSession,
+      openAdd,
+      openTransaction,
+      openCategorySheet,
+      openCategoryEdit,
+      openGoalSheet,
+      openRecurring,
+      openTargets,
+      openProfile,
+      closeSheet,
+      toast,
+      showToast,
+      showError,
+      dismissToast,
+      highlightId,
+      highlight,
+      discreet,
+    ],
   );
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
