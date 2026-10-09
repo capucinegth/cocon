@@ -4,6 +4,8 @@ Les migrations de ce dossier **n'ont été appliquées à aucune base réelle**.
 uniquement sur des bases locales jetables (PostgreSQL 16 + Auth Supabase + PostgREST 12).
 Avant toute application, valider chaque point ci-dessous.
 
+Projet retenu pour Cocon : **`goco-gmail-test`** (choisi le 9 octobre 2026).
+
 ## 1. Le bon projet, et lui seul
 
 - [ ] Créer (ou choisir) un projet Supabase **dédié à Cocon**. Ne pas réutiliser le projet d'une autre
@@ -23,8 +25,19 @@ Avant toute application, valider chaque point ci-dessous.
 | `20261005090200_cocon_rls.sql` | RLS sur toutes les tables, droits minimaux, retrait des droits par défaut |
 | `20261005090300_cocon_functions.sql` | Récurrences (`materialize_recurring_transactions`), budget du mois (`ensure_month_budget`) |
 
-Deux possibilités :
-- **Supabase CLI** : `supabase link --project-ref <ref>` puis `supabase db push` (affiche la liste avant d'appliquer).
+Trois possibilités :
+- **Script de Cocon (recommandé)** — vérifie tout avant d'écrire quoi que ce soit :
+  ```bash
+  node scripts/supabase-migrate.mjs --project goco-gmail-test           # vérification seule
+  node scripts/supabase-migrate.mjs --project goco-gmail-test --apply   # application
+  ```
+  Il retrouve le projet par son nom exact (une seule correspondance, projet actif), vérifie que
+  `NEXT_PUBLIC_SUPABASE_URL` désigne ce même projet, et s'arrête si le schéma public n'est pas vide,
+  si des comptes utilisateurs existent déjà ou si un autre déclencheur est branché sur les inscriptions.
+  Les 4 migrations s'appliquent en une seule transaction (tout ou rien), puis la RLS et les droits
+  sont contrôlés. Nécessite `SUPABASE_ACCESS_TOKEN` (jeton personnel, à révoquer après usage) et
+  l'accès réseau à `api.supabase.com` ; derrière un proxy : `NODE_USE_ENV_PROXY=1`.
+- **Supabase CLI** : `supabase link --project-ref <ref>` puis `supabase db push`.
 - **SQL Editor** : exécuter les 4 fichiers dans l'ordre.
 
 Aucune migration ne contient de `DROP`, `TRUNCATE` ou `DELETE`. Elles sont uniquement additives.
