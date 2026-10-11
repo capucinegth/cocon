@@ -4,13 +4,15 @@ Les migrations de ce dossier **n'ont été appliquées à aucune base réelle**.
 uniquement sur des bases locales jetables (PostgreSQL 16 + Auth Supabase + PostgREST 12).
 Avant toute application, valider chaque point ci-dessous.
 
-Projet retenu pour Cocon : **`goco-gmail-test`** (choisi le 9 octobre 2026).
+Projet cible : le projet Supabase **dédié à Cocon**. Son nom exact n'est pas écrit dans le dépôt :
+il est fourni au moment de la connexion (`--project` ou `SUPABASE_PROJECT_NAME`), et le script de
+migration vérifie qu'il correspond bien à l'URL utilisée par l'application.
 
 ## 1. Le bon projet, et lui seul
 
 - [ ] Créer (ou choisir) un projet Supabase **dédié à Cocon**. Ne pas réutiliser le projet d'une autre
-      application (ex. « plateforme-partenariats ») : les tables `profiles`, `accounts`, `categories`…
-      pourraient entrer en conflit, et les utilisateurs seraient partagés.
+      application : les tables `profiles`, `accounts`, `categories`… pourraient entrer en conflit,
+      et les utilisateurs seraient partagés.
 - [ ] Vérifier dans le tableau de bord le **nom** et la **référence** du projet (Project Settings → General).
 - [ ] Vérifier que le schéma `public` de ce projet est **vide** (Table Editor). La première migration
       échoue volontairement si une table du même nom existe déjà (pas de `if not exists`) : elle ne
@@ -28,14 +30,18 @@ Projet retenu pour Cocon : **`goco-gmail-test`** (choisi le 9 octobre 2026).
 Trois possibilités :
 - **Script de Cocon (recommandé)** — vérifie tout avant d'écrire quoi que ce soit :
   ```bash
-  node scripts/supabase-migrate.mjs --project goco-gmail-test           # vérification seule
-  node scripts/supabase-migrate.mjs --project goco-gmail-test --apply   # application
+  node scripts/supabase-migrate.mjs --project "<nom exact du projet>"           # vérification seule
+  node scripts/supabase-migrate.mjs --project "<nom exact du projet>" --apply   # application
   ```
+  Le nom peut aussi être fourni par la variable `SUPABASE_PROJECT_NAME` (sans `--project`) ; si les
+  deux sont présents, ils doivent être identiques. Le nom n'est pas un secret, mais il n'est pas
+  écrit dans le dépôt : il est donné au moment de la connexion.
   Il retrouve le projet par son nom exact (une seule correspondance, projet actif), vérifie que
   `NEXT_PUBLIC_SUPABASE_URL` désigne ce même projet, et s'arrête si le schéma public n'est pas vide,
   si des comptes utilisateurs existent déjà ou si un autre déclencheur est branché sur les inscriptions.
   Les 4 migrations s'appliquent en une seule transaction (tout ou rien), puis la RLS et les droits
-  sont contrôlés. Nécessite `SUPABASE_ACCESS_TOKEN` (jeton personnel, à révoquer après usage) et
+  sont contrôlés. Nécessite `SUPABASE_ACCESS_TOKEN` (jeton personnel, défini dans les réglages de
+  l'environnement et jamais dans un fichier, à révoquer après usage) et
   l'accès réseau à `api.supabase.com` ; derrière un proxy : `NODE_USE_ENV_PROXY=1`.
 - **Supabase CLI** : `supabase link --project-ref <ref>` puis `supabase db push`.
 - **SQL Editor** : exécuter les 4 fichiers dans l'ordre.

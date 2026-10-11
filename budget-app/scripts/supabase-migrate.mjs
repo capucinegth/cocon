@@ -2,10 +2,15 @@
 /**
  * Applique les migrations de Cocon sur un projet Supabase HÉBERGÉ, avec garde-fous.
  *
- *   node scripts/supabase-migrate.mjs --project goco-gmail-test            # vérification seule (rien n'est modifié)
- *   node scripts/supabase-migrate.mjs --project goco-gmail-test --apply    # application
+ *   node scripts/supabase-migrate.mjs --project "<nom exact du projet>"            # vérification seule (rien n'est modifié)
+ *   node scripts/supabase-migrate.mjs --project "<nom exact du projet>" --apply    # application
+ *
+ * Le nom du projet Supabase de Cocon n'est écrit nulle part dans le dépôt : il est fourni au
+ * moment de la connexion, avec --project ou la variable SUPABASE_PROJECT_NAME (si les deux sont
+ * donnés, ils doivent être identiques).
  *
  * Variables : SUPABASE_ACCESS_TOKEN (jeton personnel Supabase, jamais affiché ni écrit),
+ * SUPABASE_PROJECT_NAME (facultative, à la place de --project),
  * NEXT_PUBLIC_SUPABASE_URL (facultative : si présente, elle doit désigner le même projet).
  * Derrière un proxy HTTPS, lancer avec NODE_USE_ENV_PROXY=1 (Node ≥ 22.21).
  *
@@ -31,7 +36,9 @@ const COCON_TABLES = ["accounts", "budget_categories", "budgets", "categories", 
 
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
-const projectName = args[args.indexOf("--project") + 1];
+const flagIndex = args.indexOf("--project");
+const projectFromFlag = flagIndex >= 0 ? args[flagIndex + 1] : undefined;
+const projectFromEnv = process.env.SUPABASE_PROJECT_NAME?.trim() || undefined;
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 
 function stop(message) {
@@ -39,7 +46,13 @@ function stop(message) {
   process.exit(1);
 }
 
-if (!args.includes("--project") || !projectName || projectName.startsWith("--")) stop("indique le nom du projet : --project <nom>.");
+if (flagIndex >= 0 && (!projectFromFlag || projectFromFlag.startsWith("--"))) stop("--project doit être suivi du nom exact du projet.");
+if (projectFromFlag && projectFromEnv && projectFromFlag !== projectFromEnv) {
+  stop(`--project (« ${projectFromFlag} ») et SUPABASE_PROJECT_NAME (« ${projectFromEnv} ») désignent deux projets différents.`);
+}
+const projectName = projectFromFlag ?? projectFromEnv;
+if (!projectName) stop("indique le nom exact du projet Supabase de Cocon : --project <nom> ou SUPABASE_PROJECT_NAME.");
+if (/[<>]/.test(projectName)) stop("remplace le texte d'exemple par le nom exact du projet, tel qu'affiché dans le tableau de bord Supabase.");
 if (!token) stop("SUPABASE_ACCESS_TOKEN manquant (à définir dans les réglages de l'environnement, jamais dans le code).");
 
 async function api(path, init = {}) {
