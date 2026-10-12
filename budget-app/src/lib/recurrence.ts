@@ -22,6 +22,19 @@ export function nextOccurrenceDate(date: string, frequency: RecurringRule["frequ
   return `${monthStart.slice(0, 8)}${String(targetDay).padStart(2, "0")}`;
 }
 
+/**
+ * Première échéance de la règle à partir de `from` (incluse), en suivant son rythme
+ * (même jour d'ancrage). Sert à reprendre une règle sans rattraper les dates passées.
+ */
+export function firstOccurrenceFrom(rule: Pick<RecurringRule, "nextOccurrence" | "frequency" | "anchorDay">, from: string): string {
+  let date = rule.nextOccurrence;
+  // Garde-fou : une règle hebdomadaire en pause depuis des décennies reste bornée.
+  for (let guard = 0; date < from && guard < 10_000; guard += 1) {
+    date = nextOccurrenceDate(date, rule.frequency, rule.anchorDay);
+  }
+  return date;
+}
+
 /** Occurrences d'une règle entre `nextOccurrence` et `until` (inclus). */
 export function occurrencesUntil(rule: RecurringRule, until: string): string[] {
   const dates: string[] = [];

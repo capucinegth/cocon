@@ -44,7 +44,7 @@ export function BalanceView() {
       <Card className="animate-rise [animation-delay:60ms]">
         <SectionHeader title="Évolution du solde" subtitle="Compte courant, jour par jour" />
         <AreaChart
-          title="Solde du compte courant en septembre"
+          title={`Solde du compte courant en ${formatMonthName(currentMonth).toLowerCase()}`}
           data={series.map((point) => ({
             key: String(point.day),
             label: String(point.day),

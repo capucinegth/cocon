@@ -20,6 +20,7 @@ import {
   buildTransaction,
   deriveBudgetData,
   editTransaction,
+  resolveRecurringPatch,
   withArchivedCategory,
   withCategory,
   withCategoryBudget,
@@ -328,12 +329,17 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const updateRecurring = useCallback(
     async (id: string, patch: RecurringPatch) => {
+      const current = requireState();
+      const rule = current.recurring.find((r) => r.id === id);
+      if (!rule) throw new Error("Récurrence introuvable.");
+      // Date, fréquence et reprise après une pause rendues cohérentes avant l'enregistrement.
+      const resolved = resolveRecurringPatch(rule, patch, current.today);
       await commit(
-        () => repository.updateRecurring(id, patch),
-        (current) => withUpdatedRecurring(current, id, patch),
+        () => repository.updateRecurring(id, resolved),
+        (latest) => withUpdatedRecurring(latest, id, resolved),
       );
     },
-    [commit, repository],
+    [commit, repository, requireState],
   );
 
   const removeRecurring = useCallback(

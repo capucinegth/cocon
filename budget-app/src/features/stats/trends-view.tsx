@@ -7,14 +7,15 @@ import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatMonth, formatMonthShort } from "@/lib/dates";
-import { averageMonthlyExpenses, getMonthlyHistory } from "@/lib/timeline";
+import { averagedMonthsCount, averageMonthlyExpenses, getMonthlyHistory } from "@/lib/timeline";
 import { useBudget } from "@/store/budget-store";
 
-/** Les six derniers mois : dépenses et épargne cumulée. */
+/** Les six derniers mois (depuis le début de l'utilisation) : dépenses et épargne cumulée. */
 export function TrendsView() {
   const data = useBudget();
   const history = useMemo(() => getMonthlyHistory(data), [data]);
   const average = averageMonthlyExpenses(history);
+  const averaged = averagedMonthsCount(history);
   const savingsGrowth = history.at(-1)!.savingsTotal - history[0].savingsTotal;
 
   return (
@@ -23,13 +24,17 @@ export function TrendsView() {
         <SectionHeader
           title="Évolution des dépenses"
           subtitle={
-            <>
-              Moyenne : <Money value={Math.round(average)} /> / mois
-            </>
+            averaged > 0 ? (
+              <>
+                Moyenne : <Money value={Math.round(average)} /> / mois · sur {averaged} mois terminé{averaged > 1 ? "s" : ""}
+              </>
+            ) : (
+              "La moyenne apparaîtra après ton premier mois complet."
+            )
           }
         />
         <ColumnChart
-          title="Dépenses des six derniers mois"
+          title="Dépenses des derniers mois"
           data={history.map((point) => ({
             key: point.month,
             label: formatMonthShort(point.month),

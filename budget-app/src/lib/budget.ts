@@ -123,8 +123,10 @@ export function getMonthSummary(data: BudgetData, month: string): MonthSummary {
   const day = isCurrent ? dayOfMonth(data.today) : isPast ? monthDays : 1;
   const daysLeft = isCurrent ? monthDays - day + 1 : isPast ? 0 : monthDays;
 
+  // Seules les catégories actives forment le budget : une catégorie archivée n'a plus d'enveloppe
+  // (ses opérations passées restent comptées dans les dépenses, l'historique est intact).
   const variableBudget = plan
-    ? total(data.categories.filter((c) => c.group === "variables").map((c) => plan.planned[c.id] ?? 0))
+    ? total(data.categories.filter((c) => c.group === "variables" && !c.archived).map((c) => plan.planned[c.id] ?? 0))
     : isPast
       ? variable
       : 0;

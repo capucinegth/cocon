@@ -246,6 +246,10 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
       if (patch.amount !== undefined) row.amount_cents = toCents(patch.amount);
       if (patch.isActive !== undefined) row.is_active = patch.isActive;
       if (patch.nextOccurrence !== undefined) row.next_occurrence = patch.nextOccurrence;
+      if (patch.frequency !== undefined) row.frequency = patch.frequency;
+      if ("anchorDay" in patch) row.anchor_day = patch.anchorDay ?? null;
+      if (patch.categoryId !== undefined) row.category_id = patch.categoryId;
+      if (patch.accountId !== undefined) row.account_id = patch.accountId;
       const rows = await must<unknown[]>(
         client.from("recurring_transactions").update(row).eq("id", ruleId).select("id"),
         "modifier la récurrence",

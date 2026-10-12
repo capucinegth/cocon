@@ -9,7 +9,7 @@ import { FormError } from "@/components/ui/form-error";
 import { Sheet } from "@/components/ui/sheet";
 import { emojiChoices, toneChoices } from "@/config/categories";
 import { useAsyncAction } from "@/hooks/use-async-action";
-import { parseAmountInput } from "@/lib/format";
+import { parseAmountInput, sanitizeAmount } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import type { SavingsGoal, Tone } from "@/types/finance";
@@ -28,6 +28,8 @@ function GoalForm({ goal }: { goal?: SavingsGoal }) {
   const remove = useAsyncAction();
 
   const target = parseAmountInput(targetText);
+  // Une date cible déjà passée reste enregistrable telle quelle (sinon le navigateur bloquerait l'envoi).
+  const minDeadline = goal?.deadline && goal.deadline < today.slice(0, 7) ? goal.deadline : today.slice(0, 7);
   const canSubmit = label.trim().length > 0 && target > 0 && !save.pending;
 
   async function handleSubmit(event: FormEvent) {
@@ -66,11 +68,11 @@ function GoalForm({ goal }: { goal?: SavingsGoal }) {
         <div className="grid grid-cols-2 gap-3">
           <label className="block min-w-0">
             <span className="mb-2.5 block text-sm font-semibold text-muted">Déjà épargné</span>
-            <TextInput inputMode="decimal" value={savedText} onChange={(event) => setSavedText(event.target.value)} placeholder="0 €" />
+            <TextInput inputMode="decimal" value={savedText} onChange={(event) => setSavedText(sanitizeAmount(event.target.value))} placeholder="0 €" />
           </label>
           <label className="block min-w-0">
             <span className="mb-2.5 block text-sm font-semibold text-muted">Par mois</span>
-            <TextInput inputMode="decimal" value={monthlyText} onChange={(event) => setMonthlyText(event.target.value)} placeholder="0 €" />
+            <TextInput inputMode="decimal" value={monthlyText} onChange={(event) => setMonthlyText(sanitizeAmount(event.target.value))} placeholder="0 €" />
           </label>
         </div>
         {goal && (
@@ -81,7 +83,7 @@ function GoalForm({ goal }: { goal?: SavingsGoal }) {
           <span className="mb-2.5 block text-sm font-semibold text-muted">
             Date cible <span className="font-medium">(facultatif)</span>
           </span>
-          <TextInput type="month" value={deadline} min={today.slice(0, 7)} onChange={(event) => setDeadline(event.target.value)} className="font-medium" />
+          <TextInput type="month" value={deadline} min={minDeadline} onChange={(event) => setDeadline(event.target.value)} className="font-medium" />
         </label>
 
         <FormField label="Icône">

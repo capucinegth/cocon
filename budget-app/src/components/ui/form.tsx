@@ -3,7 +3,10 @@
 import type { InputHTMLAttributes, ReactNode } from "react";
 import { toneStyles } from "@/config/tones";
 import { cn } from "@/lib/cn";
+import { sanitizeAmount } from "@/lib/format";
 import type { Tone } from "@/types/finance";
+
+export { sanitizeAmount };
 
 /** Groupe de champ : libellé discret au-dessus du contrôle. */
 export function FormField({ label, hint, children, as = "fieldset" }: { label: string; hint?: string; children: ReactNode; as?: "fieldset" | "div" }) {
@@ -27,13 +30,6 @@ export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInput
   return <input className={cn(inputStyles, className)} {...props} />;
 }
 
-/** Garde uniquement chiffres + une virgule, 2 décimales max. */
-export function sanitizeAmount(raw: string): string {
-  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
-  const [units = "", ...rest] = cleaned.split(",");
-  const trimmedUnits = units.replace(/^0+(?=\d)/, "").slice(0, 7);
-  return rest.length ? `${trimmedUnits || "0"},${rest.join("").slice(0, 2)}` : trimmedUnits;
-}
 
 interface AmountInputProps {
   value: string;

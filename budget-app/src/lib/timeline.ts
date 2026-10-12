@@ -130,19 +130,39 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
   });
 }
 
-/** Historique mensuel : totaux enregistrés, recalculés quand les transactions détaillées existent. */
-export function getMonthlyHistory(data: BudgetData): (MonthHistoryPoint & { partial: boolean })[] {
-  const current = monthKey(data.today);
-  return data.history.map((point) => {
-    const detailed = monthTransactions(data, point.month).length > 0;
-    if (!detailed) return { ...point, partial: false };
-    const summary = getMonthSummary(data, point.month);
-    return { ...point, expenses: summary.committed, partial: point.month === current };
-  });
+export interface HistoryMonth extends MonthHistoryPoint {
+  /** Mois en cours : pas encore terminé. */
+  partial: boolean;
+  /** Le mois contient des données (opérations, ou totaux enregistrés). */
+  hasData: boolean;
 }
 
-/** Dépenses mensuelles moyennes des mois complets de l'historique. */
-export function averageMonthlyExpenses(history: { expenses: number; partial: boolean }[]): number {
-  const complete = history.filter((p) => !p.partial);
+/**
+ * Historique mensuel : totaux enregistrés, recalculés quand les transactions détaillées existent.
+ * Les mois antérieurs à la première donnée ne sont pas affichés (l'utilisation n'avait pas commencé) ;
+ * le mois en cours est toujours partiel.
+ */
+export function getMonthlyHistory(data: BudgetData): HistoryMonth[] {
+  const current = monthKey(data.today);
+  const points = data.history.map<HistoryMonth>((point) => {
+    const partial = point.month === current;
+    const detailed = monthTransactions(data, point.month).length > 0;
+    if (!detailed) return { ...point, partial, hasData: point.expenses > 0 };
+    const summary = getMonthSummary(data, point.month);
+    return { ...point, expenses: summary.committed, partial, hasData: true };
+  });
+  const first = points.findIndex((point) => point.hasData);
+  // Aucune donnée : on garde au moins le mois en cours.
+  return first === -1 ? points.slice(-1) : points.slice(first);
+}
+
+/** Dépenses mensuelles moyennes des mois terminés qui contiennent des données (0 si aucun). */
+export function averageMonthlyExpenses(history: { expenses: number; partial: boolean; hasData?: boolean }[]): number {
+  const complete = history.filter((p) => !p.partial && p.hasData !== false);
   return complete.length ? total(complete.map((p) => p.expenses)) / complete.length : 0;
+}
+
+/** Nombre de mois terminés pris en compte dans la moyenne. */
+export function averagedMonthsCount(history: { partial: boolean; hasData?: boolean }[]): number {
+  return history.filter((p) => !p.partial && p.hasData !== false).length;
 }

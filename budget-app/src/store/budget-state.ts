@@ -9,7 +9,7 @@ import { isLiquidAccount } from "@/config/accounts";
 import { planFor } from "@/lib/budget";
 import { addMonths, endOfMonth, monthKey } from "@/lib/dates";
 import { roundCents } from "@/lib/format";
-import { nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
+import { firstOccurrenceFrom, nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
 import { slugify } from "@/lib/text";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
 import type {
@@ -332,7 +332,33 @@ export function withoutGoal(state: BudgetState, id: string): BudgetState {
   };
 }
 
-export type RecurringPatch = Partial<Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence">>;
+export type RecurringPatch = Partial<
+  Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence" | "frequency" | "anchorDay" | "categoryId" | "accountId">
+>;
+
+/**
+ * Modification complète et cohérente d'une règle récurrente, à partir de ce que l'utilisateur a changé.
+ *   - Mensuel : le jour d'ancrage suit la date choisie (il ne change pas si ni la date ni la fréquence ne changent,
+ *     pour qu'un « 31 » reste un « fin de mois »). Hebdomadaire : pas de jour d'ancrage.
+ *   - Reprise après une pause, ou date choisie dans le passé : la règle repart de sa première échéance
+ *     à partir d'aujourd'hui, sans rattraper les dates passées (aucune opération rétroactive).
+ * Les opérations déjà générées ne sont jamais modifiées.
+ */
+export function resolveRecurringPatch(rule: RecurringRule, patch: RecurringPatch, today: string): RecurringPatch {
+  const frequency = patch.frequency ?? rule.frequency;
+  const requestedDate = patch.nextOccurrence ?? rule.nextOccurrence;
+  const dateChanged = requestedDate !== rule.nextOccurrence;
+  const frequencyChanged = frequency !== rule.frequency;
+  const dayOf = (date: string) => Number(date.slice(8, 10));
+
+  const anchorDay =
+    frequency === "weekly" ? undefined : dateChanged || frequencyChanged || rule.anchorDay === undefined ? dayOf(requestedDate) : rule.anchorDay;
+  const resumed = patch.isActive === true && !rule.isActive;
+  const nextOccurrence =
+    (resumed || dateChanged) && requestedDate < today ? firstOccurrenceFrom({ nextOccurrence: requestedDate, frequency, anchorDay }, today) : requestedDate;
+
+  return { ...patch, frequency, anchorDay, nextOccurrence };
+}
 
 export function withUpdatedRecurring(state: BudgetState, id: string, patch: RecurringPatch): BudgetState {
   return {

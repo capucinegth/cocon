@@ -69,6 +69,17 @@ export function formatAxis(value: number): string {
   return formatNumber(value, 0);
 }
 
+/**
+ * Filtre une saisie de montant au fil de la frappe : chiffres et une virgule (le point devient une virgule),
+ * 2 décimales et 7 chiffres avant la virgule au plus. Jamais de signe : un montant saisi est toujours positif.
+ */
+export function sanitizeAmount(raw: string): string {
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
+  const [units = "", ...rest] = cleaned.split(",");
+  const trimmedUnits = units.replace(/^0+(?=\d)/, "").slice(0, 7);
+  return rest.length ? `${trimmedUnits || "0"},${rest.join("").slice(0, 2)}` : trimmedUnits;
+}
+
 /** Lit une saisie utilisateur « 23,5 » / « 23.50 » → 23.5. */
 export function parseAmountInput(input: string): number {
   const normalized = input.replace(/\s/g, "").replace(",", ".");
