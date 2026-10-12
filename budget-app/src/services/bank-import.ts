@@ -1,5 +1,5 @@
 /**
- * Connexion bancaire — ARCHITECTURE PRÉPARÉE, PAS ENCORE ACTIVÉE (« Bientôt »).
+ * Connexion bancaire — ARCHITECTURE PRÉPARÉE, NON BRANCHÉE (rien n'est affiché dans l'application).
  *
  * Principes non négociables :
  *   - Cocon ne demande, ne voit et ne stocke JAMAIS d'identifiant ni de mot de passe bancaire.

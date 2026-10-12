@@ -64,7 +64,7 @@ function AccountForm({ accountId }: { accountId: string }) {
           </span>
           <div className="min-w-0 flex-1">
             <p className="break-words font-semibold">{label.trim() || account.label}</p>
-            <p className="text-[13px] text-muted">{accountTypeLabel[account.type]}</p>
+            <p className="text-[13px] text-muted">{account.isActive ? accountTypeLabel[account.type] : `${accountTypeLabel[account.type]} · désactivé`}</p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[12px] font-medium text-muted">Solde calculé</p>

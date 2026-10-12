@@ -25,6 +25,9 @@ import type { RecurringRule } from "@/types/finance";
 
 const kindLabel = { expense: "Dépense", income: "Revenu", saving: "Épargne" } as const;
 
+/** « le 31 » tombe le dernier jour des mois plus courts. */
+const monthlyHint = (day: number) => `Puis le ${day} de chaque mois${day > 28 ? " (ou le dernier jour du mois s'il est plus court)" : ""}.`;
+
 function RecurringForm({ ruleId }: { ruleId: string }) {
   const { recurring, categories, accounts, today, updateRecurring, removeRecurring } = useBudget();
   const categoryOf = useCategoryLookup();
@@ -122,7 +125,7 @@ function RecurringForm({ ruleId }: { ruleId: string }) {
             className="font-medium"
           />
           <span className="mt-2 block text-[13px] text-muted">
-            {frequency === "monthly" ? `Puis le ${preview.anchorDay ?? Number(date.slice(8, 10))} de chaque mois (ou le dernier jour du mois).` : "Puis chaque semaine, le même jour."}
+            {frequency === "monthly" ? monthlyHint(preview.anchorDay ?? Number(date.slice(8, 10))) : "Puis chaque semaine, le même jour."}
           </span>
         </label>
         {rule.kind !== "saving" && (

@@ -2,26 +2,16 @@
 
 import {
   ArchiveRestore,
-  Bell,
-  CalendarClock,
-  CalendarDays,
   ChevronRight,
   Coins,
   Download,
   EyeOff,
-  Fingerprint,
-  Globe,
   Info,
-  Landmark,
-  Lock,
   LogOut,
-  Moon,
-  Palette,
   Plus,
   Repeat,
   RotateCcw,
   ShieldCheck,
-  Smartphone,
   Sparkles,
   Sprout,
   UserRound,
@@ -45,10 +35,9 @@ import { hasActiveCategoryNamed } from "@/store/budget-state";
 import { useBudget } from "@/store/budget-store";
 import { useSession } from "@/store/session-store";
 import { useUI } from "@/store/ui-store";
-import type { Preferences } from "@/types/finance";
 
-function SoonBadge({ children = "Bientôt" }: { children?: ReactNode }) {
-  return <span className="shrink-0 rounded-full bg-lilac-50 px-2.5 py-1 text-[12px] font-semibold text-lilac-700">{children}</span>;
+function StatusBadge({ children }: { children: ReactNode }) {
+  return <span className="shrink-0 rounded-full bg-sage-50 px-2.5 py-1 text-[12px] font-semibold text-sage-700">{children}</span>;
 }
 
 interface RowProps {
@@ -108,11 +97,6 @@ const Value = ({ children }: { children: ReactNode }) => (
   </span>
 );
 
-type NotificationKey = keyof NonNullable<Preferences["notifications"]>;
-
-/** Valeurs par défaut des rappels (tant que l'utilisateur ne les a pas changées). */
-const notificationDefaults: Record<NotificationKey, boolean> = { budgetAlerts: true, billReminders: true, eveningReminder: false };
-
 export function SettingsScreen() {
   const data = useBudget();
   const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile, restoreCategory } = data;
@@ -121,12 +105,6 @@ export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const isDemo = source === "demo";
-  const soon = () => showToast("Disponible dans une prochaine version");
-
-  const notifications = { ...notificationDefaults, ...stripUndefined(profile?.preferences.notifications) };
-  const setNotification = (key: NotificationKey, value: boolean) => {
-    updateProfile({ preferences: { notifications: { ...notifications, [key]: value } } }).catch((cause) => showError(errorMessage(cause)));
-  };
 
   const expenseCategories = categories.filter((c) => isExpenseCategory(c) && !c.archived);
   const categorySections = [
@@ -180,17 +158,11 @@ export function SettingsScreen() {
                 <Value>{profile?.displayName || "—"}</Value>
               </SettingsRow>
             )}
-            <SettingsRow icon={Landmark} label="Connexion bancaire" hint="Importer tes opérations automatiquement" onClick={soon}>
-              <SoonBadge />
-            </SettingsRow>
-            <SettingsRow
-              icon={Repeat}
-              label="Synchronisation"
-              hint={isDemo ? "Disponible avec un compte Cocon" : "Tes données sont enregistrées et retrouvées sur tous tes appareils"}
-              onClick={isDemo ? soon : undefined}
-            >
-              {isDemo ? <SoonBadge /> : <SoonBadge>Activée</SoonBadge>}
-            </SettingsRow>
+            {!isDemo && (
+              <SettingsRow icon={Repeat} label="Synchronisation" hint="Tes données sont enregistrées et retrouvées sur tous tes appareils">
+                <StatusBadge>Activée</StatusBadge>
+              </SettingsRow>
+            )}
             {!isDemo && (
               <SettingsRow
                 icon={LogOut}
@@ -230,8 +202,9 @@ export function SettingsScreen() {
                   <span className="min-w-0 flex-1">
                     <span className="block break-words text-[15px] font-semibold">{account.label}</span>
                     <span className="block text-[13px] leading-snug text-muted">
-                      {accountTypeLabel[account.type]}
-                      {!account.isActive && " · désactivé"}
+                      {[account.label !== accountTypeLabel[account.type] ? accountTypeLabel[account.type] : null, account.isActive ? null : "désactivé"]
+                        .filter(Boolean)
+                        .join(" · ") || "Actif"}
                     </span>
                   </span>
                   <span className={`flex shrink-0 items-center gap-1 text-[15px] ${account.isActive ? "text-ink" : "text-muted"}`}>
@@ -250,36 +223,27 @@ export function SettingsScreen() {
             </li>
           </SettingsGroup>
 
-          <SettingsGroup title="Préférences">
-            <SettingsRow icon={EyeOff} label="Mode discret" hint="Floute les montants, pratique en public">
-              <Toggle
-                checked={discreet}
-                onChange={(value) => {
-                  setDiscreet(value);
-                  showToast(value ? "Montants masqués" : "Montants visibles");
-                  if (!isDemo) updateProfile({ preferences: { discreet: value } }).catch((cause) => showError(errorMessage(cause)));
-                }}
-                label="Mode discret"
-              />
+          <SettingsGroup title="Budget">
+            <SettingsRow icon={Sparkles} label="Budget du quotidien" hint="Courses, sorties, imprévus" onClick={() => router.push("/budget")}>
+              <Value>
+                <Money value={variableBudget} />
+              </Value>
             </SettingsRow>
-            <SettingsRow icon={Palette} label="Apparence" hint="Rose poudré" onClick={soon}>
-              <span className="flex shrink-0 -space-x-1.5" aria-hidden>
-                {["bg-blush-300", "bg-lilac-100", "bg-sage-100", "bg-peach-100"].map((color) => (
-                  <span key={color} className={`size-5 rounded-full ring-2 ring-surface ${color}`} />
-                ))}
-              </span>
+            <SettingsRow icon={Coins} label="Revenus prévus" hint="Comptés tant qu'ils ne sont pas saisis" onClick={() => openTargets(currentMonth)}>
+              <Value>
+                <Money value={plan?.incomeTarget ?? 0} />
+              </Value>
             </SettingsRow>
-            <SettingsRow icon={Moon} label="Thème sombre" hint="Pour les soirées" onClick={soon}>
-              <SoonBadge />
-            </SettingsRow>
-            <SettingsRow icon={Coins} label="Devise" onClick={soon}>
-              <Value>Euro (€)</Value>
-            </SettingsRow>
-            <SettingsRow icon={Globe} label="Langue" onClick={soon}>
-              <Value>Français</Value>
+            <SettingsRow icon={Sprout} label="Épargne mensuelle" hint="Répartie entre tes objectifs" onClick={() => openTargets(currentMonth)}>
+              <Value>
+                <Money value={plan?.savingsTarget ?? 0} />
+              </Value>
             </SettingsRow>
           </SettingsGroup>
 
+        </div>
+
+        <div className="flex flex-col gap-6">
           <SettingsGroup title="Catégories" description="Pour classer tes opérations et construire ton budget. Touche une catégorie pour la modifier.">
             {categorySections.map(
               ({ title, items }) =>
@@ -341,61 +305,22 @@ export function SettingsScreen() {
               <ChevronRight size={18} className="text-muted" aria-hidden />
             </SettingsRow>
           </SettingsGroup>
-        </div>
 
-        <div className="flex flex-col gap-6">
-          <SettingsGroup title="Budget">
-            <SettingsRow icon={CalendarDays} label="Début du mois budgétaire" onClick={soon}>
-              <Value>Le 1er</Value>
-            </SettingsRow>
-            <SettingsRow icon={Sparkles} label="Budget du quotidien" hint="Courses, sorties, imprévus" onClick={() => router.push("/budget")}>
-              <Value>
-                <Money value={variableBudget} />
-              </Value>
-            </SettingsRow>
-            <SettingsRow icon={Coins} label="Revenus prévus" hint="Comptés tant qu'ils ne sont pas saisis" onClick={() => openTargets(currentMonth)}>
-              <Value>
-                <Money value={plan?.incomeTarget ?? 0} />
-              </Value>
-            </SettingsRow>
-            <SettingsRow icon={Sprout} label="Épargne mensuelle" hint="Répartie entre tes objectifs" onClick={() => openTargets(currentMonth)}>
-              <Value>
-                <Money value={plan?.savingsTarget ?? 0} />
-              </Value>
-            </SettingsRow>
-            <SettingsRow icon={CalendarClock} label="Dépense « importante »" hint="Seuil d'affichage dans le calendrier" onClick={soon}>
-              <Value>
-                <Money value={appConfig.largeExpenseThreshold} />
-              </Value>
+          <SettingsGroup title="Préférences">
+            <SettingsRow icon={EyeOff} label="Mode discret" hint="Floute les montants, pratique en public">
+              <Toggle
+                checked={discreet}
+                onChange={(value) => {
+                  setDiscreet(value);
+                  showToast(value ? "Montants masqués" : "Montants visibles");
+                  if (!isDemo) updateProfile({ preferences: { discreet: value } }).catch((cause) => showError(errorMessage(cause)));
+                }}
+                label="Mode discret"
+              />
             </SettingsRow>
           </SettingsGroup>
 
-          <SettingsGroup
-            title="Notifications"
-            description={
-              isDemo
-                ? "Aperçu : les rappels réels arriveront avec l'application installable."
-                : "Bientôt : les rappels arriveront avec l'application installable. Tes choix sont déjà enregistrés."
-            }
-          >
-            <SettingsRow icon={Bell} label="Alertes de budget" hint="Quand une catégorie approche de sa limite">
-              <Toggle checked={notifications.budgetAlerts} onChange={(value) => setNotification("budgetAlerts", value)} label="Alertes de budget" />
-            </SettingsRow>
-            <SettingsRow icon={CalendarClock} label="Rappel des prélèvements" hint="La veille d'un loyer ou d'une facture">
-              <Toggle checked={notifications.billReminders} onChange={(value) => setNotification("billReminders", value)} label="Rappel des prélèvements" />
-            </SettingsRow>
-            <SettingsRow icon={Smartphone} label="Rappel du soir" hint="Penser à noter ses dépenses">
-              <Toggle checked={notifications.eveningReminder} onChange={(value) => setNotification("eveningReminder", value)} label="Rappel du soir" />
-            </SettingsRow>
-          </SettingsGroup>
-
-          <SettingsGroup title="Sécurité">
-            <SettingsRow icon={Lock} label="Code de verrouillage" hint="Protéger l'ouverture de l'application" onClick={soon}>
-              <SoonBadge />
-            </SettingsRow>
-            <SettingsRow icon={Fingerprint} label="Face ID / empreinte" onClick={soon}>
-              <SoonBadge />
-            </SettingsRow>
+          <SettingsGroup title="Mes données">
             <SettingsRow icon={Download} label="Exporter mes données" hint="Fichier CSV de toutes tes opérations" onClick={exportCsv}>
               <ChevronRight size={18} className="text-muted" aria-hidden />
             </SettingsRow>
@@ -426,8 +351,4 @@ export function SettingsScreen() {
       </div>
     </>
   );
-}
-
-function stripUndefined<T extends object>(value: T | undefined): Partial<T> {
-  return Object.fromEntries(Object.entries(value ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
