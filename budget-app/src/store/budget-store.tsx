@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findCategory } from "@/config/categories";
 import { appConfig } from "@/config/app";
-import { moveInOrder } from "@/lib/accounts";
+import { canDeactivateAccount, moveInOrder } from "@/lib/accounts";
 import { getMonthSummary, type MonthSummary } from "@/lib/budget";
 import { monthKey } from "@/lib/dates";
 import { uuid } from "@/lib/ids";
@@ -388,7 +388,11 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const updateAccount = useCallback(
     async (id: AccountId, patch: AccountPatch) => {
-      const updated = withUpdatedAccount(requireState(), id, patch).accounts.find((a) => a.id === id);
+      const current = requireState();
+      if (patch.isActive === false && !canDeactivateAccount(current.accounts, id)) {
+        throw new RepositoryError("Garde au moins un compte actif hors épargne pour saisir tes opérations.", "validation");
+      }
+      const updated = withUpdatedAccount(current, id, patch).accounts.find((a) => a.id === id);
       if (!updated) throw new Error("Compte introuvable.");
       await commit(
         () => repository.updateAccount(updated),
