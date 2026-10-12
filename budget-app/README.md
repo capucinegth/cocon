@@ -31,21 +31,26 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 
 - **Compte** : inscription (prénom facultatif), connexion, déconnexion, session persistante,
   pages protégées, session expirée → retour à la connexion avec un message clair, erreurs en français.
-- **Opérations** : ajout, modification, suppression (avec annulation), filtres, recherche,
-  opérations datées dans le futur (« À venir »), récurrences hebdomadaires / mensuelles
-  générées automatiquement à échéance (pause, modification, suppression), export CSV.
+- **Opérations** : ajout, modification, suppression (avec annulation), note facultative, filtres,
+  recherche, opérations datées dans le futur (« À venir », y compris les mois suivants), récurrences
+  hebdomadaires / mensuelles générées automatiquement à échéance — description, montant, fréquence,
+  prochaine échéance, catégorie, compte modifiables ; pause et reprise sans rattrapage —, export CSV.
 - **Budget par mois** : montant par catégorie, revenus et épargne prévus, reprise automatique
-  du mois précédent, préparation du mois suivant, catégories personnalisées (archivage sans perte d'historique).
+  du mois précédent, préparation du mois suivant, catégories de dépenses et de revenus personnalisées
+  (archivage sans perte d'historique, restauration).
+- **Mes comptes** : nom, solde de départ, actif / désactivé (jamais supprimé), ordre d'affichage ;
+  solde calculé par compte (solde de départ + opérations saisies) et solde total hors épargne.
 - **Objectifs** : création, versement, progression calculée en base, modification, suppression.
 - **Accueil / Statistiques** : disponible réel, disponible par jour, état du budget, calendrier,
-  tendances — tout est recalculé automatiquement à chaque saisie.
-- **Paramètres** : prénom, mode discret et préférences de rappels enregistrés dans le profil
-  (retrouvés sur un autre appareil), export CSV.
+  statistiques de n'importe quel mois, solde total hors épargne, tendances — tout est recalculé
+  automatiquement à chaque saisie.
+- **Paramètres** : prénom et mode discret enregistrés dans le profil (retrouvés sur un autre appareil),
+  comptes, catégories, budget du mois, export CSV. Aucun réglage factice.
 - **États** : chargement, erreur avec « Réessayer », compte neuf (« Bienvenue dans Cocon »),
   enregistrement impossible (message clair, saisie conservée).
 - **Application installable (PWA)** : manifeste, icônes, page hors connexion. Le service worker
   ne met en cache que les fichiers de l'application, jamais de données.
-- **Préparé, pas encore activé** (« Bientôt ») : notifications (`src/services/notifications.ts`),
+- **Préparé dans le code, non affiché dans l'application** : rappels (`src/services/notifications.ts`),
   connexion bancaire via agrégateur DSP2 (`src/services/bank-import.ts`) — Cocon ne demande
   et ne stocke jamais d'identifiants bancaires.
 
@@ -60,7 +65,7 @@ UI (features/, components/)
              → PostgreSQL : tables + RLS + fonctions (supabase/migrations/)
 ```
 
-- Calculs centralisés et testés : `src/lib/budget.ts`, `timeline.ts`, `recurrence.ts`, `goals.ts`.
+- Calculs centralisés et testés : `src/lib/budget.ts`, `accounts.ts`, `timeline.ts`, `recurrence.ts`, `goals.ts`.
 - Dates en heure de Paris (`src/lib/paris-time.ts`), montants en centimes entiers en base.
 - Session : `@supabase/ssr` (cookies), rafraîchie et vérifiée par `src/proxy.ts`.
 - Une modification est enregistrée **puis** affichée : en cas d'échec, rien ne change à l'écran.
