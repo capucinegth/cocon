@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findCategory } from "@/config/categories";
 import { appConfig } from "@/config/app";
+import { moveInOrder } from "@/lib/accounts";
 import { getMonthSummary, type MonthSummary } from "@/lib/budget";
 import { monthKey } from "@/lib/dates";
 import { uuid } from "@/lib/ids";
@@ -13,7 +14,7 @@ import { createDemoRepository, createDemoState } from "@/services/demo-repositor
 import { errorMessage, isSessionError, type BudgetRepository } from "@/services/repository";
 import { createSupabaseRepository } from "@/services/supabase-repository";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
-import type { Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
+import type { AccountId, Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
 import {
   buildCategory,
   buildGoal,
@@ -35,6 +36,9 @@ import {
   withUpdatedCategory,
   withUpdatedGoal,
   withUpdatedRecurring,
+  withAccountOrder,
+  withUpdatedAccount,
+  type AccountPatch,
   type CategoryInput,
   type GoalInput,
   type MonthTargets,
@@ -76,6 +80,9 @@ interface BudgetContextValue extends BudgetData {
   updateRecurring: (id: string, patch: RecurringPatch) => Promise<void>;
   removeRecurring: (id: string) => Promise<void>;
   updateProfile: (patch: { displayName?: string; preferences?: Preferences }) => Promise<void>;
+  updateAccount: (id: AccountId, patch: AccountPatch) => Promise<void>;
+  /** Déplace un compte à une position (0 = en premier) dans l'ordre d'affichage. */
+  moveAccount: (id: AccountId, toIndex: number) => Promise<void>;
   resetDemo: () => void;
 }
 
@@ -365,6 +372,31 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     [commit, repository, requireState],
   );
 
+  const updateAccount = useCallback(
+    async (id: AccountId, patch: AccountPatch) => {
+      const updated = withUpdatedAccount(requireState(), id, patch).accounts.find((a) => a.id === id);
+      if (!updated) throw new Error("Compte introuvable.");
+      await commit(
+        () => repository.updateAccount(updated),
+        (current) => withUpdatedAccount(current, id, patch),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const moveAccount = useCallback(
+    async (id: AccountId, toIndex: number) => {
+      const ids = requireState().accounts.map((a) => a.id);
+      const ordered = moveInOrder(ids, id, toIndex);
+      if (ordered.every((value, index) => value === ids[index])) return;
+      await commit(
+        () => repository.reorderAccounts(ordered),
+        (current) => withAccountOrder(current, ordered),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
   const resetDemo = useCallback(() => {
     if (isDemo) setState(createDemoState());
   }, [isDemo]);
@@ -397,6 +429,8 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       updateRecurring,
       removeRecurring,
       updateProfile,
+      updateAccount,
+      moveAccount,
       resetDemo,
     };
   }, [
@@ -421,6 +455,8 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     updateRecurring,
     removeRecurring,
     updateProfile,
+    updateAccount,
+    moveAccount,
     resetDemo,
   ]);
 

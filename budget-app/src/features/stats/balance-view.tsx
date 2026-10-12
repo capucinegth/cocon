@@ -5,6 +5,7 @@ import { AreaChart } from "@/components/charts/area-chart";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { SectionHeader } from "@/components/ui/section-header";
+import { isLiquidAccount } from "@/config/accounts";
 import { formatMonthName, formatShortDate } from "@/lib/dates";
 import { getBalanceSeries } from "@/lib/timeline";
 import { useBudget } from "@/store/budget-store";
@@ -14,6 +15,10 @@ export function BalanceView() {
   const data = useBudget();
   const { summary, currentMonth } = data;
   const series = useMemo(() => getBalanceSeries(data, currentMonth), [data, currentMonth]);
+  const liquidNames = data.accounts
+    .filter((a) => isLiquidAccount(a) && (a.isActive || a.initialBalance !== 0))
+    .map((a) => a.label)
+    .join(" · ");
   const todayIndex = summary.dayOfMonth - 1;
   const today = series[todayIndex];
   const end = series.at(-1)!;
@@ -42,9 +47,9 @@ export function BalanceView() {
       </div>
 
       <Card className="animate-rise [animation-delay:60ms]">
-        <SectionHeader title="Évolution du solde" subtitle="Compte courant, jour par jour" />
+        <SectionHeader title="Solde total hors épargne" subtitle={`${liquidNames || "Tes comptes"}, jour par jour`} />
         <AreaChart
-          title={`Solde du compte courant en ${formatMonthName(currentMonth).toLowerCase()}`}
+          title={`Solde total hors épargne en ${formatMonthName(currentMonth).toLowerCase()}`}
           data={series.map((point) => ({
             key: String(point.day),
             label: String(point.day),
@@ -57,14 +62,15 @@ export function BalanceView() {
         />
         <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-0.5 w-4 rounded bg-sage-500" /> Solde réel
+            <span aria-hidden className="h-0.5 w-4 rounded bg-sage-500" /> Jusqu&apos;à aujourd&apos;hui
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden className="h-0.5 w-4 rounded border-t-2 border-dashed border-sage-500/60" /> Prévision
           </span>
         </p>
         <p className="mt-3 rounded-2xl bg-canvas px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
-          La prévision tient compte du loyer, des factures et des courses prévues, et d&apos;un rythme de{" "}
+          Calculé à partir des soldes de départ de « Mes comptes » et des opérations saisies dans Cocon : ce n&apos;est pas un
+          relevé bancaire. La prévision tient compte des opérations à venir et d&apos;un rythme de{" "}
           <Money value={summary.perDay} cents="always" /> par jour.
         </p>
       </Card>

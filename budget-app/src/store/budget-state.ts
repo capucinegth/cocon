@@ -6,6 +6,7 @@
  */
 import { findCategory } from "@/config/categories";
 import { isLiquidAccount } from "@/config/accounts";
+import { accountMovement, preferredAccountId, savingsAccountIds } from "@/lib/accounts";
 import { planFor } from "@/lib/budget";
 import { addMonths, endOfMonth, monthKey } from "@/lib/dates";
 import { roundCents } from "@/lib/format";
@@ -13,6 +14,7 @@ import { firstOccurrenceFrom, nextOccurrenceDate, projectRecurring } from "@/lib
 import { slugify } from "@/lib/text";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
 import type {
+  Account,
   AccountId,
   BudgetPlan,
   Category,
@@ -58,14 +60,17 @@ export function deriveHistory(state: BudgetState, months: string[]): MonthHistor
   });
 }
 
-/** Argent disponible (comptes hors épargne) au 1er de chaque mois. */
+/**
+ * Solde total hors épargne au 1er de chaque mois : soldes de départ des comptes courants / espèces
+ * + opérations enregistrées sur ces comptes (celles du Livret A n'y entrent pas).
+ */
 export function deriveOpeningBalances(state: BudgetState, months: string[]): Record<string, number> {
   const initial = state.accounts.filter(isLiquidAccount).reduce((acc, account) => acc + account.initialBalance, 0);
+  const savings = savingsAccountIds(state.accounts);
+  const liquid = state.transactions.filter((t) => !savings.has(t.accountId));
   return Object.fromEntries(
     months.map((month) => {
-      const net = state.transactions
-        .filter((t) => t.date < `${month}-01`)
-        .reduce((acc, t) => acc + (t.kind === "income" ? t.amount : -t.amount), 0);
+      const net = liquid.filter((t) => t.date < `${month}-01`).reduce((acc, t) => acc + accountMovement(t), 0);
       return [month, roundCents(initial + net)];
     }),
   );
@@ -378,6 +383,36 @@ export function withoutRecurring(state: BudgetState, id: string): BudgetState {
   };
 }
 
+export type AccountPatch = Partial<Pick<Account, "label" | "initialBalance" | "isActive">>;
+
+/**
+ * Modifier un compte. Les opérations ne changent jamais (désactiver un compte le retire seulement des choix).
+ * Démo : les soldes d'ouverture figés suivent le nouveau solde de départ.
+ */
+export function withUpdatedAccount(state: BudgetState, id: AccountId, patch: AccountPatch): BudgetState {
+  const account = state.accounts.find((a) => a.id === id);
+  if (!account) return state;
+  const updated: Account = {
+    ...account,
+    ...patch,
+    label: (patch.label ?? account.label).trim(),
+    initialBalance: patch.initialBalance !== undefined ? roundCents(patch.initialBalance) : account.initialBalance,
+  };
+  const delta = isLiquidAccount(account) ? roundCents(updated.initialBalance - account.initialBalance) : 0;
+  const openingBalances =
+    state.openingBalances && delta !== 0
+      ? Object.fromEntries(Object.entries(state.openingBalances).map(([month, value]) => [month, roundCents(value + delta)]))
+      : state.openingBalances;
+  return { ...state, accounts: state.accounts.map((a) => (a.id === id ? updated : a)), openingBalances };
+}
+
+/** Ordre d'affichage des comptes (identifiants dans le nouvel ordre ; les autres gardent leur place à la fin). */
+export function withAccountOrder(state: BudgetState, orderedIds: AccountId[]): BudgetState {
+  const rank = new Map(orderedIds.map((id, index) => [id, index]));
+  const accounts = [...state.accounts].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  return { ...state, accounts };
+}
+
 export type ProfilePatch = Partial<Pick<Profile, "displayName" | "preferences">>;
 
 export function withProfile(state: BudgetState, patch: ProfilePatch): BudgetState {
@@ -395,7 +430,7 @@ export function withProfile(state: BudgetState, patch: ProfilePatch): BudgetStat
 
 /** Comptes et catégories par défaut, utilisés par le formulaire d'ajout. */
 export function defaultAccountId(state: Pick<BudgetState, "accounts">): AccountId {
-  return (state.accounts.find((a) => a.isActive && a.type === "checking") ?? state.accounts.find((a) => a.isActive))?.id ?? "";
+  return preferredAccountId(state.accounts);
 }
 
 export function savingCategoryId(state: Pick<BudgetState, "categories">): CategoryId {

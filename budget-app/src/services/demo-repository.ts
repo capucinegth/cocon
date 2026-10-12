@@ -34,6 +34,8 @@ export function createDemoRepository(): BudgetRepository {
     deleteGoal: done,
     updateRecurring: done,
     deleteRecurring: done,
+    updateAccount: done,
+    reorderAccounts: done,
     updateProfile: done,
   };
 }

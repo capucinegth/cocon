@@ -10,6 +10,7 @@ import type { BudgetState } from "@/types/budget-data";
 import type { RecurringRule } from "@/types/finance";
 import {
   accountFromRow,
+  accountToRow,
   categoryFromRow,
   categoryToRow,
   goalFromRow,
@@ -259,6 +260,25 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
 
     async deleteRecurring(ruleId) {
       await must(client.from("recurring_transactions").delete().eq("id", ruleId), "supprimer la récurrence");
+    },
+
+    async updateAccount(account) {
+      const rows = await must<unknown[]>(
+        client.from("accounts").update(accountToRow(account)).eq("id", account.id).select("id"),
+        "modifier le compte",
+      );
+      expectRow(rows, "Ce compte");
+    },
+
+    async reorderAccounts(orderedIds) {
+      // Positions espacées de 10, comme à la création des comptes (10, 20, 30).
+      for (const [index, id] of orderedIds.entries()) {
+        const rows = await must<unknown[]>(
+          client.from("accounts").update({ sort_order: (index + 1) * 10 }).eq("id", id).select("id"),
+          "réordonner tes comptes",
+        );
+        expectRow(rows, "Ce compte");
+      }
     },
 
     async updateProfile(userId, profile) {

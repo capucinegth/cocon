@@ -4,6 +4,7 @@ import { CategoryEditSheet } from "@/features/budget/category-edit-sheet";
 import { RecurringSheet } from "@/features/budget/recurring-sheet";
 import { TargetsSheet } from "@/features/budget/targets-sheet";
 import { AddGoalSheet } from "@/features/goals/add-goal-sheet";
+import { AccountSheet } from "@/features/settings/account-sheet";
 import { ProfileSheet } from "@/features/settings/profile-sheet";
 import { AddTransactionSheet } from "@/features/transactions/add-transaction-sheet";
 import { TransactionDetailSheet } from "@/features/transactions/transaction-detail-sheet";
@@ -43,6 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <RecurringSheet />
           <AddGoalSheet />
           <ProfileSheet />
+          <AccountSheet />
           <Toaster />
         </UIProvider>
       </BudgetProvider>

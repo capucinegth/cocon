@@ -20,6 +20,7 @@ export type SheetState =
   | { type: "recurring"; ruleId: string }
   | { type: "targets"; month: string }
   | { type: "profile" }
+  | { type: "account"; accountId: string }
   | null;
 
 export type ToastTone = "success" | "error";
@@ -47,6 +48,7 @@ interface UIContextValue {
   openRecurring: (ruleId: string) => void;
   openTargets: (month: string) => void;
   openProfile: () => void;
+  openAccount: (accountId: string) => void;
   closeSheet: () => void;
   toast: Toast | null;
   showToast: (message: string, action?: { label: string; onAction: () => void }) => void;
@@ -87,6 +89,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const openRecurring = useCallback((ruleId: string) => open({ type: "recurring", ruleId }), [open]);
   const openTargets = useCallback((month: string) => open({ type: "targets", month }), [open]);
   const openProfile = useCallback(() => open({ type: "profile" }), [open]);
+  const openAccount = useCallback((accountId: string) => open({ type: "account", accountId }), [open]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   const showToast = useCallback((message: string, action?: { label: string; onAction: () => void }) => {
@@ -147,6 +150,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openRecurring,
       openTargets,
       openProfile,
+      openAccount,
       closeSheet,
       toast,
       showToast,
@@ -169,6 +173,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openRecurring,
       openTargets,
       openProfile,
+      openAccount,
       closeSheet,
       toast,
       showToast,

@@ -24,7 +24,6 @@ import {
   Sparkles,
   Sprout,
   UserRound,
-  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -36,6 +35,7 @@ import { Money } from "@/components/ui/money";
 import { Toggle } from "@/components/ui/toggle";
 import { appConfig } from "@/config/app";
 import { isExpenseCategory } from "@/config/categories";
+import { accountBalance, accountTypeLabel, liquidBalance } from "@/lib/accounts";
 import { planFor } from "@/lib/budget";
 import { downloadText, transactionsToCsv } from "@/lib/export";
 import { errorMessage } from "@/services/repository";
@@ -114,7 +114,7 @@ export function SettingsScreen() {
   const data = useBudget();
   const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile } = data;
   const { signOut } = useSession();
-  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets } = useUI();
+  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets, openAccount } = useUI();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const isDemo = source === "demo";
@@ -128,7 +128,6 @@ export function SettingsScreen() {
   const expenseCategories = categories.filter((c) => isExpenseCategory(c) && !c.archived);
   const plan = planFor(data, currentMonth);
   const variableBudget = expenseCategories.filter((c) => c.group === "variables").reduce((acc, c) => acc + (plan?.planned[c.id] ?? 0), 0);
-  const activeAccounts = accounts.filter((a) => a.isActive);
 
   function exportCsv() {
     if (data.allTransactions.length === 0) return showToast("Aucune opération à exporter pour l'instant");
@@ -159,9 +158,6 @@ export function SettingsScreen() {
                 <Value>{profile?.displayName || "—"}</Value>
               </SettingsRow>
             )}
-            <SettingsRow icon={Wallet} label="Mes comptes" hint={activeAccounts.map((a) => a.label).join(", ") || "Aucun compte"} onClick={soon}>
-              <Value>{activeAccounts.length}</Value>
-            </SettingsRow>
             <SettingsRow icon={Landmark} label="Connexion bancaire" hint="Importer tes opérations automatiquement" onClick={soon}>
               <SoonBadge />
             </SettingsRow>
@@ -192,6 +188,44 @@ export function SettingsScreen() {
                 <ChevronRight size={18} className="text-muted" aria-hidden />
               </SettingsRow>
             )}
+          </SettingsGroup>
+
+          <SettingsGroup
+            title="Mes comptes"
+            description="Soldes calculés : solde de départ + opérations saisies dans Cocon. Touche un compte pour le modifier."
+          >
+            {accounts.map((account) => (
+              <li key={account.id}>
+                <button
+                  type="button"
+                  onClick={() => openAccount(account.id)}
+                  aria-label={`Modifier le compte ${account.label}`}
+                  className="flex min-h-16 w-full items-center gap-4 rounded-2xl px-3 py-2.5 text-left transition-colors duration-200 hover:bg-blush-50/70"
+                >
+                  <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-blush-50 text-xl">
+                    {account.emoji}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-[15px] font-semibold">{account.label}</span>
+                    <span className="block text-[13px] leading-snug text-muted">
+                      {accountTypeLabel[account.type]}
+                      {!account.isActive && " · désactivé"}
+                    </span>
+                  </span>
+                  <span className={`flex shrink-0 items-center gap-1 text-[15px] ${account.isActive ? "text-ink" : "text-muted"}`}>
+                    <Money value={accountBalance(account, data.allTransactions, data.today)} cents="always" className="tabular font-semibold" />
+                    <ChevronRight size={18} className="text-muted" aria-hidden />
+                  </span>
+                </button>
+              </li>
+            ))}
+            <li className="mt-1 flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold">Solde total hors épargne</span>
+                <span className="block text-[13px] text-muted">Comptes courants et espèces</span>
+              </span>
+              <Money value={liquidBalance(accounts, data.allTransactions, data.today)} cents="always" className="tabular shrink-0 text-[15px] font-semibold" />
+            </li>
           </SettingsGroup>
 
           <SettingsGroup title="Préférences">

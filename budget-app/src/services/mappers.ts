@@ -149,6 +149,15 @@ export function accountFromRow(row: AccountRow): Account {
   };
 }
 
+/** Champs modifiables d'un compte (jamais `user_id` ni le type : la RLS et la base s'en chargent). */
+export function accountToRow(account: Pick<Account, "label" | "initialBalance" | "isActive">) {
+  return {
+    name: account.label.trim(),
+    initial_balance_cents: toCents(account.initialBalance),
+    is_active: account.isActive,
+  };
+}
+
 /* ------------------------------------------------------------------- Opérations */
 
 export function transactionFromRow(row: TransactionRow, rules: Map<string, RecurringRule>, categoryLabel: (id: string) => string): Transaction {

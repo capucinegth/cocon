@@ -6,6 +6,7 @@ import { appConfig } from "@/config/app";
 import { findCategory } from "@/config/categories";
 import type { BudgetData } from "@/types/budget-data";
 import type { MonthHistoryPoint } from "@/types/finance";
+import { savingsAccountIds } from "./accounts";
 import { getMonthSummary, monthTransactions, monthUpcoming, total } from "./budget";
 import { dayOfMonth, daysInMonth, monthKey } from "./dates";
 import { roundCents } from "./format";
@@ -96,8 +97,9 @@ export interface BalancePoint {
 }
 
 /**
- * Solde du compte jour par jour. Pour le mois en cours, la suite du mois est une
- * prévision : prélèvements à venir + disponible dépensé régulièrement chaque jour.
+ * Solde total hors épargne (comptes courants, joints, espèces) jour par jour, à partir des soldes de départ
+ * et des opérations saisies. Pour le mois en cours, la suite du mois est une prévision : prélèvements
+ * à venir + disponible dépensé régulièrement chaque jour.
  */
 export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[] {
   const opening = data.openingBalances[month] ?? 0;
@@ -105,10 +107,14 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
   const days = summary.daysInMonth;
   const today = summary.isCurrent ? summary.dayOfMonth : days;
 
+  // Les opérations du Livret A (comptes d'épargne) n'entrent pas dans ce solde.
+  const savings = savingsAccountIds(data.accounts);
   const movements = new Map<number, number>();
   const add = (day: number, amount: number) => movements.set(day, (movements.get(day) ?? 0) + amount);
-  monthTransactions(data, month).forEach((t) => add(dayOfMonth(t.date), t.kind === "income" ? t.amount : -t.amount));
-  const upcoming = summary.isCurrent ? monthUpcoming(data, month) : [];
+  monthTransactions(data, month)
+    .filter((t) => !savings.has(t.accountId))
+    .forEach((t) => add(dayOfMonth(t.date), t.kind === "income" ? t.amount : -t.amount));
+  const upcoming = summary.isCurrent ? monthUpcoming(data, month).filter((u) => !savings.has(u.accountId)) : [];
   upcoming.forEach((u) => add(dayOfMonth(u.date), u.kind === "income" ? u.amount : -u.amount));
 
   // Épargne prévue mais ni versée ni programmée : réservée dès aujourd'hui.

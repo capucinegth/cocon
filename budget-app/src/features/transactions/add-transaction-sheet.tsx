@@ -8,7 +8,6 @@ import { AmountInput, FormField, TextInput, amountToInput } from "@/components/u
 import { FormError } from "@/components/ui/form-error";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
-import { quickAddAccounts } from "@/config/accounts";
 import { isExpenseCategory } from "@/config/categories";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { cn } from "@/lib/cn";
@@ -16,6 +15,7 @@ import { addDays } from "@/lib/dates";
 import { formatMoney, formatPercent, parseAmountInput } from "@/lib/format";
 import { errorMessage } from "@/services/repository";
 import { useBudget } from "@/store/budget-store";
+import { accountChoices, preferredAccountId } from "@/lib/accounts";
 import { defaultAccountId, savingCategoryId } from "@/store/budget-state";
 import { useUI, type AddPreset } from "@/store/ui-store";
 import type { AccountId, CategoryId, Recurrence, Transaction, TransactionKind } from "@/types/finance";
@@ -63,9 +63,8 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
   const categoryOptions = categories.filter(
     (c) => (!c.archived || c.id === editing?.categoryId) && (kind === "income" ? c.group === "revenus" : isExpenseCategory(c)),
   );
-  const accountOptions = quickAddAccounts(accounts).concat(
-    accounts.filter((a) => a.id === accountId && !quickAddAccounts(accounts).some((q) => q.id === a.id)),
-  );
+  // Comptes actifs (le Livret A compris pour un revenu ou une dépense) ; le compte d'origine reste proposé en modification.
+  const accountOptions = accountChoices(accounts, kind, editing?.accountId);
   const needsCategory = kind !== "saving";
   const canSubmit = amount > 0 && (!needsCategory || categoryId !== null) && !pending;
   const signed = kind === "income" ? amount : -amount;
@@ -115,6 +114,8 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
           onChange={(next) => {
             setKind(next);
             setCategoryId(null);
+            // L'épargne se verse depuis un compte hors épargne.
+            if (!accountChoices(accounts, next, editing?.accountId).some((a) => a.id === accountId)) setAccountId(preferredAccountId(accounts, next));
           }}
           options={(Object.keys(kindCopy) as TransactionKind[]).map((value) => ({ value, label: kindCopy[value].label }))}
           className="w-full"
@@ -228,7 +229,7 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
         )}
 
         {accountOptions.length > 0 && (
-          <FormField label="Compte">
+          <FormField label={kind === "saving" ? "Depuis le compte" : "Compte"}>
             <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
               {accountOptions.map((account) => (
                 <ChoiceChip key={account.id} selected={account.id === accountId} onClick={() => setAccountId(account.id)}>
