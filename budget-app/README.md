@@ -29,7 +29,8 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 
 ## Fonctionnalités
 
-- **Compte** : inscription (prénom facultatif), connexion, déconnexion, session persistante,
+- **Compte** : inscription (prénom facultatif), connexion, déconnexion, mot de passe oublié,
+  modification du mot de passe, session persistante,
   pages protégées, session expirée → retour à la connexion avec un message clair, erreurs en français.
 - **Opérations** : ajout, modification, suppression (avec annulation), note facultative, filtres,
   recherche, opérations datées dans le futur (« À venir », y compris les mois suivants), récurrences
@@ -38,8 +39,11 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 - **Budget par mois** : montant par catégorie, revenus et épargne prévus, reprise automatique
   du mois précédent, préparation du mois suivant, catégories de dépenses et de revenus personnalisées
   (archivage sans perte d'historique, restauration).
-- **Mes comptes** : nom, solde de départ, actif / désactivé (jamais supprimé), ordre d'affichage ;
-  solde calculé par compte (solde de départ + opérations saisies) et solde total hors épargne.
+- **Mes comptes** : nom, solde de départ, actif / désactivé (jamais supprimé ; ses récurrences
+  sont mises en pause), ordre d'affichage ; solde calculé par compte, solde total hors épargne
+  et patrimoine total.
+- **Épargne = transfert** : un versement passe d'un compte hors épargne vers un compte d'épargne
+  (Livret A) ; le patrimoine ne change pas et le disponible ne le déduit qu'une fois.
 - **Objectifs** : création, versement, progression calculée en base, modification, suppression.
 - **Accueil / Statistiques** : disponible réel, disponible par jour, état du budget, calendrier,
   statistiques de n'importe quel mois, solde total hors épargne, tendances — tout est recalculé

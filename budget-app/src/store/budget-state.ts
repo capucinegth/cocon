@@ -46,6 +46,7 @@ function toUpcoming(t: Transaction): UpcomingItem {
     origin: "planned",
     recurrenceId: t.recurrenceId,
     goalId: t.goalId,
+    transferAccountId: t.transferAccountId,
   };
 }
 
@@ -81,7 +82,7 @@ export function deriveBudgetData(state: BudgetState): BudgetData {
   const { today } = state;
   const past = state.transactions.filter((t) => t.date <= today);
   const planned = state.transactions.filter((t) => t.date > today).map(toUpcoming);
-  const projected = projectRecurring(state.recurring, state.transactions, today, endOfMonth(today));
+  const projected = projectRecurring(state.recurring, state.transactions, today, endOfMonth(today), state.accounts);
   const upcoming = [...planned, ...projected].sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
   const current = monthKey(today);
   const months = Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(current, i - (HISTORY_MONTHS - 1)));
@@ -113,6 +114,8 @@ export interface TransactionInput {
   note?: string;
   recurrence: Recurrence;
   goalId?: string;
+  /** Épargne : compte d'épargne de destination. */
+  transferAccountId?: AccountId;
 }
 
 /** Libellé par défaut : l'objectif (épargne) ou la catégorie. */
@@ -132,6 +135,7 @@ export function buildTransaction(
 ): { transaction: Transaction; rule?: RecurringRule } {
   const label = input.label?.trim() || defaultLabel(state, input);
   const goalId = input.kind === "saving" ? input.goalId : undefined;
+  const transferAccountId = input.kind === "saving" ? input.transferAccountId : undefined;
   const rule: RecurringRule | undefined =
     input.recurrence === "none"
       ? undefined
@@ -143,6 +147,7 @@ export function buildTransaction(
           categoryId: input.categoryId,
           accountId: input.accountId,
           goalId,
+          transferAccountId,
           frequency: input.recurrence,
           anchorDay: input.recurrence === "monthly" ? Number(input.date.slice(8, 10)) : undefined,
           nextOccurrence: nextOccurrenceDate(input.date, input.recurrence, Number(input.date.slice(8, 10))),
@@ -160,6 +165,7 @@ export function buildTransaction(
     recurrence: input.recurrence,
     recurrenceId: rule?.id,
     goalId,
+    transferAccountId,
   };
   return { transaction, rule };
 }
@@ -176,6 +182,7 @@ export function editTransaction(state: Pick<BudgetState, "categories" | "goals">
     date: input.date,
     note: input.note?.trim() || undefined,
     goalId: input.kind === "saving" ? input.goalId : undefined,
+    transferAccountId: input.kind === "saving" ? input.transferAccountId : undefined,
   };
 }
 
@@ -362,7 +369,7 @@ export function withoutGoal(state: BudgetState, id: string): BudgetState {
 }
 
 export type RecurringPatch = Partial<
-  Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence" | "frequency" | "anchorDay" | "categoryId" | "accountId">
+  Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence" | "frequency" | "anchorDay" | "categoryId" | "accountId" | "transferAccountId">
 >;
 
 /**
@@ -450,6 +457,33 @@ export function withProfile(state: BudgetState, patch: ProfilePatch): BudgetStat
       preferences: { ...state.profile.preferences, ...patch.preferences },
     },
   };
+}
+
+/**
+ * Règles des comptes d'une opération ou d'une récurrence (message clair, ou null si tout est valide) :
+ *   - le compte de l'opération (source d'une épargne) est un compte actif hors épargne ;
+ *   - une épargne est un transfert vers un compte d'épargne actif, différent de la source ;
+ *   - en modification, les comptes déjà utilisés restent acceptés même s'ils ont été désactivés depuis.
+ */
+export function accountsProblem(
+  accounts: Account[],
+  input: { kind: TransactionKind; accountId: AccountId; transferAccountId?: AccountId },
+  original?: { accountId: AccountId; transferAccountId?: AccountId },
+): string | null {
+  const source = accounts.find((a) => a.id === input.accountId);
+  if (!source) return "Choisis un compte.";
+  if (!isLiquidAccount(source)) {
+    return input.kind === "saving"
+      ? "L'épargne se verse depuis un compte hors épargne."
+      : "Un compte d'épargne ne reçoit que des transferts d'épargne : choisis un autre compte.";
+  }
+  if (!source.isActive && source.id !== original?.accountId) return `« ${source.label} » est désactivé : choisis un autre compte.`;
+  if (input.kind !== "saving") return null;
+  if (!input.transferAccountId) return "Choisis le compte d'épargne qui reçoit ce versement.";
+  const destination = accounts.find((a) => a.id === input.transferAccountId);
+  if (!destination || isLiquidAccount(destination) || destination.id === source.id) return "La destination doit être un compte d'épargne, différent du compte source.";
+  if (!destination.isActive && destination.id !== original?.transferAccountId) return `« ${destination.label} » est désactivé : choisis un autre compte d'épargne.`;
+  return null;
 }
 
 /** Comptes et catégories par défaut, utilisés par le formulaire d'ajout. */

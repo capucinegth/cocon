@@ -13,7 +13,7 @@ const done = async () => {};
 /** État de démo prêt à l'emploi (récurrences dues générées, comme le ferait la base). */
 export function createDemoState(): BudgetState {
   const state = getDemoState();
-  const { transactions, rules } = materializeRecurring(state.recurring, state.transactions, state.today, uuid);
+  const { transactions, rules } = materializeRecurring(state.recurring, state.transactions, state.today, uuid, state.accounts);
   return { ...state, transactions, recurring: rules };
 }
 

@@ -14,7 +14,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Toggle } from "@/components/ui/toggle";
 import { isExpenseCategory } from "@/config/categories";
 import { useAsyncAction } from "@/hooks/use-async-action";
-import { accountChoices } from "@/lib/accounts";
+import { accountChoices, destinationChoices, ruleAccountsActive } from "@/lib/accounts";
 import { formatLongDate } from "@/lib/dates";
 import { parseAmountInput, roundCents } from "@/lib/format";
 import { firstOccurrenceFrom } from "@/lib/recurrence";
@@ -42,6 +42,7 @@ function RecurringForm({ ruleId }: { ruleId: string }) {
   const [date, setDate] = useState(shownDate);
   const [categoryId, setCategoryId] = useState(rule?.categoryId ?? "");
   const [accountId, setAccountId] = useState(rule?.accountId ?? "");
+  const [transferAccountId, setTransferAccountId] = useState<string | undefined>(rule?.transferAccountId);
   const [isActive, setActive] = useState(rule?.isActive ?? true);
   const save = useAsyncAction();
   const remove = useAsyncAction();
@@ -56,6 +57,9 @@ function RecurringForm({ ruleId }: { ruleId: string }) {
     (c) => (!c.archived || c.id === rule.categoryId) && (rule.kind === "income" ? c.group === "revenus" : isExpenseCategory(c)),
   );
   const accountOptions = accountChoices(accounts, rule.kind, rule.accountId);
+  const destinationOptions = destinationChoices(accounts, rule.transferAccountId);
+  // Une récurrence ne génère rien sur un compte désactivé : elle ne peut pas être réactivée tant qu'il l'est.
+  const accountsActive = ruleAccountsActive({ accountId, transferAccountId }, accounts);
 
   const patch: RecurringPatch = {};
   if (label.trim() !== rule.label) patch.label = label.trim();
@@ -64,9 +68,13 @@ function RecurringForm({ ruleId }: { ruleId: string }) {
   if (date !== shownDate) patch.nextOccurrence = date;
   if (categoryId !== rule.categoryId) patch.categoryId = categoryId;
   if (accountId !== rule.accountId) patch.accountId = accountId;
+  if (transferAccountId !== rule.transferAccountId) patch.transferAccountId = transferAccountId;
   if (isActive !== rule.isActive) patch.isActive = isActive;
   const changed = Object.keys(patch).length > 0;
-  const canSubmit = label.trim().length > 0 && amount > 0 && date >= today && changed && !save.pending;
+  // Une ancienne épargne récurrente sans destination peut être mise en pause ou supprimée ; active, elle doit en avoir une.
+  const destinationMissing = rule.kind === "saving" && isActive && !transferAccountId;
+  const canSubmit =
+    label.trim().length > 0 && amount > 0 && date >= today && changed && !destinationMissing && !(isActive && !accountsActive) && !save.pending;
   // Ce qui sera réellement enregistré (reprise après une pause : prochaine échéance à partir d'aujourd'hui).
   const preview = resolveRecurringPatch(rule, patch, today);
 
@@ -151,13 +159,31 @@ function RecurringForm({ ruleId }: { ruleId: string }) {
             </div>
           </FormField>
         )}
+        {rule.kind === "saving" && (
+          <FormField label="Vers le compte d'épargne">
+            {destinationOptions.length > 0 ? (
+              <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
+                {destinationOptions.map((account) => (
+                  <ChoiceChip key={account.id} selected={account.id === transferAccountId} onClick={() => setTransferAccountId(account.id)}>
+                    <span aria-hidden>{account.emoji}</span>
+                    {account.label}
+                  </ChoiceChip>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-canvas px-4 py-3 text-[13px] text-muted">Aucun compte d&apos;épargne actif : réactive ton Livret A dans Mes comptes.</p>
+            )}
+          </FormField>
+        )}
         <div className="flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
           <span>
             <span className="block text-[15px] font-semibold">Active</span>
             <span className="block text-[13px] text-muted">
-              {!rule.isActive && isActive
-                ? "Reprise sans rattrapage : les échéances de la pause ne sont pas ajoutées."
-                : "En pause, plus rien n'est ajouté automatiquement."}
+              {!accountsActive
+                ? "Un de ses comptes est désactivé : rien n'est ajouté. Choisis un compte actif pour la réactiver."
+                : !rule.isActive && isActive
+                  ? "Reprise sans rattrapage : les échéances de la pause ne sont pas ajoutées."
+                  : "En pause, plus rien n'est ajouté automatiquement."}
             </span>
           </span>
           <Toggle checked={isActive} onChange={setActive} label="Récurrence active" />

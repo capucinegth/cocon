@@ -111,7 +111,10 @@ const septemberPlanned: Transaction[] = [
   tx("u4", "2026-09-20", "Netflix", 17.99, "expense", "abonnements", rule("r-netflix")),
 ];
 
-export const demoTransactions: Transaction[] = [...august, ...september, ...septemberPlanned];
+/** Les versements d'épargne sont des transferts du compte courant vers le Livret A. */
+const toLivret = <T extends { kind: Transaction["kind"] }>(item: T): T => (item.kind === "saving" ? { ...item, transferAccountId: "livret" } : item);
+
+export const demoTransactions: Transaction[] = [...august, ...september, ...septemberPlanned].map(toLivret);
 
 type RuleSeed = [id: string, label: string, amount: number, kind: TransactionKind, categoryId: CategoryId, next: string];
 
@@ -139,6 +142,7 @@ export const demoRecurring: RecurringRule[] = (
   nextOccurrence,
   anchorDay: Number(nextOccurrence.slice(8, 10)),
   isActive: true,
+  ...(kind === "saving" ? { transferAccountId: "livret" } : {}),
 }));
 
 export const demoBudgetPlans: BudgetPlan[] = [

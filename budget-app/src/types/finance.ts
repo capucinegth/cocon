@@ -59,6 +59,11 @@ export interface Transaction {
   recurrenceId?: string;
   /** Objectif alimenté (épargne uniquement). */
   goalId?: string;
+  /**
+   * Épargne : compte d'épargne de destination (transfert depuis `accountId`).
+   * Absent sur les anciennes épargnes : compte de destination non précisé.
+   */
+  transferAccountId?: AccountId;
 }
 
 /**
@@ -76,6 +81,7 @@ export interface UpcomingItem {
   origin: "planned" | "recurring";
   recurrenceId?: string;
   goalId?: string;
+  transferAccountId?: AccountId;
 }
 
 /** @deprecated Ancien nom (V2) — utiliser UpcomingItem. */
@@ -90,6 +96,8 @@ export interface RecurringRule {
   categoryId: CategoryId;
   accountId: AccountId;
   goalId?: string;
+  /** Épargne : compte d'épargne de destination. */
+  transferAccountId?: AccountId;
   frequency: Exclude<Recurrence, "none">;
   /** Prochaine date à générer (AAAA-MM-JJ). */
   nextOccurrence: string;

@@ -7,6 +7,7 @@ import {
   Download,
   EyeOff,
   Info,
+  KeyRound,
   LogOut,
   Plus,
   Repeat,
@@ -27,7 +28,7 @@ import { Money } from "@/components/ui/money";
 import { Toggle } from "@/components/ui/toggle";
 import { appConfig } from "@/config/app";
 import { isExpenseCategory } from "@/config/categories";
-import { accountBalance, accountTypeLabel, liquidBalance } from "@/lib/accounts";
+import { accountBalance, accountTypeLabel, liquidBalance, netWorth } from "@/lib/accounts";
 import { planFor } from "@/lib/budget";
 import { downloadText, transactionsToCsv } from "@/lib/export";
 import { errorMessage } from "@/services/repository";
@@ -101,7 +102,7 @@ export function SettingsScreen() {
   const data = useBudget();
   const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile, restoreCategory } = data;
   const { signOut } = useSession();
-  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets, openAccount } = useUI();
+  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets, openAccount, openPassword } = useUI();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const isDemo = source === "demo";
@@ -159,6 +160,11 @@ export function SettingsScreen() {
               </SettingsRow>
             )}
             {!isDemo && (
+              <SettingsRow icon={KeyRound} label="Modifier le mot de passe" hint="Pour te connecter sur tous tes appareils" onClick={() => openPassword()}>
+                <ChevronRight size={18} className="text-muted" aria-hidden />
+              </SettingsRow>
+            )}
+            {!isDemo && (
               <SettingsRow icon={Repeat} label="Synchronisation" hint="Tes données sont enregistrées et retrouvées sur tous tes appareils">
                 <StatusBadge>Activée</StatusBadge>
               </SettingsRow>
@@ -186,7 +192,7 @@ export function SettingsScreen() {
 
           <SettingsGroup
             title="Mes comptes"
-            description="Soldes calculés : solde de départ + opérations saisies dans Cocon. Touche un compte pour le modifier."
+            description="Soldes calculés : solde de départ + opérations et versements d'épargne saisis dans Cocon. Touche un compte pour le modifier."
           >
             {accounts.map((account) => (
               <li key={account.id}>
@@ -220,6 +226,13 @@ export function SettingsScreen() {
                 <span className="block text-[13px] text-muted">Comptes courants et espèces</span>
               </span>
               <Money value={liquidBalance(accounts, data.allTransactions, data.today)} cents="always" className="tabular shrink-0 text-[15px] font-semibold" />
+            </li>
+            <li className="mt-1 flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold">Patrimoine total</span>
+                <span className="block text-[13px] text-muted">Tous tes comptes, épargne comprise</span>
+              </span>
+              <Money value={netWorth(accounts, data.allTransactions, data.today)} cents="always" className="tabular shrink-0 text-[15px] font-semibold" />
             </li>
           </SettingsGroup>
 

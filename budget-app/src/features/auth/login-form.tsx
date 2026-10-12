@@ -85,7 +85,12 @@ export function LoginForm() {
             className={inputStyles}
           />
         </div>
-        <PasswordField label="Mot de passe" value={password} onChange={setPassword} autoComplete="current-password" />
+        <div>
+          <PasswordField label="Mot de passe" value={password} onChange={setPassword} autoComplete="current-password" />
+          <Link href="/mot-de-passe-oublie" className="mt-2.5 inline-block text-[14px] font-semibold text-blush-700 underline-offset-4 hover:underline">
+            Mot de passe oublié ?
+          </Link>
+        </div>
         <FormError message={error} />
         <Button type="submit" size="lg" disabled={pending} aria-busy={pending || undefined} className="w-full">
           {pending ? "Connexion…" : "Se connecter"}

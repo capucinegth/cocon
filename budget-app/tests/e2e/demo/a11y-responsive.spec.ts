@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoA11yViolations, expectNoHorizontalOverflow, openAdd } from "../support";
 
-const pages = ["/", "/budget", "/transactions", "/objectifs", "/statistiques", "/parametres", "/connexion"];
+const pages = ["/", "/budget", "/transactions", "/objectifs", "/statistiques", "/parametres", "/connexion", "/mot-de-passe-oublie"];
 
 test("aucune violation d'accessibilité sur toutes les pages", async ({ page }) => {
   for (const path of pages) {

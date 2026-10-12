@@ -29,7 +29,12 @@ export function transactionsToCsv(
         kindLabel[t.kind],
         textCell(findCategory(lookups.categories, t.categoryId).label),
         textCell(lookups.goals.find((g) => g.id === t.goalId)?.label ?? ""),
-        textCell(findAccount(lookups.accounts, t.accountId).label),
+        // Transfert d'épargne : « compte source → compte d'épargne ».
+        textCell(
+          t.kind === "saving" && t.transferAccountId
+            ? `${findAccount(lookups.accounts, t.accountId).label} → ${findAccount(lookups.accounts, t.transferAccountId).label}`
+            : findAccount(lookups.accounts, t.accountId).label,
+        ),
         // Montant calculé (jamais saisi tel quel) : écrit comme un nombre, signe compris.
         signed.toFixed(2).replace(".", ","),
         textCell(t.note ?? ""),

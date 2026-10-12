@@ -187,7 +187,13 @@ export function TransactionsScreen() {
                         key={t.id}
                         label={t.label}
                         category={category}
-                        subtitle={[goal ? `Épargne · ${goal.label}` : category.label, t.accountId !== defaultAccount ? findAccount(data.accounts, t.accountId).label : null].filter(Boolean).join(" · ")}
+                        subtitle={[
+                          goal ? `Épargne · ${goal.label}` : category.label,
+                          t.accountId !== defaultAccount ? findAccount(data.accounts, t.accountId).label : null,
+                          t.kind === "saving" && t.transferAccountId ? `→ ${findAccount(data.accounts, t.transferAccountId).label}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                         amount={signedAmount(t)}
                         recurring={t.recurrence !== undefined && t.recurrence !== "none"}
                         highlighted={t.id === highlightId}

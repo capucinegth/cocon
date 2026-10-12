@@ -36,9 +36,9 @@ import { RepositoryError, type BudgetRepository } from "./repository";
 const PAGE_SIZE = 1000;
 
 const TRANSACTION_COLUMNS =
-  "id, account_id, category_id, goal_id, recurrence_id, type, amount_cents, description, note, transaction_date";
+  "id, account_id, transfer_account_id, category_id, goal_id, recurrence_id, type, amount_cents, description, note, transaction_date";
 const RECURRING_COLUMNS =
-  "id, account_id, category_id, goal_id, type, amount_cents, description, frequency, next_occurrence, anchor_day, is_active";
+  "id, account_id, transfer_account_id, category_id, goal_id, type, amount_cents, description, frequency, next_occurrence, anchor_day, is_active";
 const GOAL_COLUMNS =
   "id, name, icon, color, target_amount_cents, initial_amount_cents, monthly_contribution_cents, target_date, current_amount_cents";
 
@@ -259,6 +259,7 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
       if ("anchorDay" in patch) row.anchor_day = patch.anchorDay ?? null;
       if (patch.categoryId !== undefined) row.category_id = patch.categoryId;
       if (patch.accountId !== undefined) row.account_id = patch.accountId;
+      if ("transferAccountId" in patch) row.transfer_account_id = patch.transferAccountId ?? null;
       const rows = await must<unknown[]>(
         client.from("recurring_transactions").update(row).eq("id", ruleId).select("id"),
         "modifier la récurrence",

@@ -4,6 +4,7 @@ import {
   accountBalance,
   accountChoices,
   canDeactivateAccount,
+  destinationChoices,
   liquidBalance,
   moveInOrder,
   preferredAccountId,
@@ -58,10 +59,11 @@ describe("soldes des comptes", () => {
 });
 
 describe("comptes proposés dans les formulaires", () => {
-  it("Livret A proposé pour un revenu ou une dépense, pas pour verser de l'épargne", () => {
-    expect(accountChoices(accounts, "income").map((a) => a.id)).toEqual(["courant", "especes", "livret"]);
-    expect(accountChoices(accounts, "expense").map((a) => a.id)).toContain("livret");
-    expect(accountChoices(accounts, "saving").map((a) => a.id)).toEqual(["courant", "especes"]);
+  it("V3 : un compte d'épargne ne se mouvemente que par transfert (destination d'une épargne)", () => {
+    for (const kind of ["income", "expense", "saving"] as const) {
+      expect(accountChoices(accounts, kind).map((a) => a.id)).toEqual(["courant", "especes"]);
+    }
+    expect(destinationChoices(accounts).map((a) => a.id)).toEqual(["livret"]);
   });
 
   it("un compte désactivé n'est plus proposé, sauf pour l'opération qui l'utilise déjà", () => {

@@ -25,6 +25,11 @@ export function authErrorMessage(error: AuthErrorLike | null | undefined): strin
     case "user_already_exists":
     case "email_exists":
       return "Un compte existe déjà avec cette adresse. Connecte-toi plutôt.";
+    case "same_password":
+      return "Choisis un mot de passe différent de l'actuel.";
+    case "reauthentication_needed":
+    case "reauthentication_not_valid":
+      return "Pour des raisons de sécurité, reconnecte-toi puis recommence.";
     case "weak_password":
       return "Mot de passe trop faible : au moins 8 caractères, en mélangeant lettres et chiffres.";
     case "email_address_invalid":
@@ -59,6 +64,13 @@ export function authErrorMessage(error: AuthErrorLike | null | undefined): strin
 
 /** Règles côté formulaire (Supabase vérifie aussi de son côté). */
 export const PASSWORD_MIN_LENGTH = 8;
+
+/** Nouveau mot de passe : longueur minimale et confirmation identique. */
+export function newPasswordProblem(password: string, confirmation: string): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Le mot de passe doit contenir au moins ${PASSWORD_MIN_LENGTH} caractères.`;
+  if (password !== confirmation) return "Les deux mots de passe ne sont pas identiques.";
+  return null;
+}
 
 export function validateCredentials(email: string, password: string): string | null {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Indique une adresse e-mail valide.";

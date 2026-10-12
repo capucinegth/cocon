@@ -19,7 +19,7 @@ test.describe("Paramètres", () => {
 });
 
 test.describe("Mes comptes", () => {
-  test("modifier le solde de départ, désactiver un compte, Livret A dans les opérations", async ({ page }) => {
+  test("modifier le solde de départ, désactiver un compte, comptes proposés dans les opérations", async ({ page }) => {
     await page.goto("/parametres");
     await page.getByRole("button", { name: "Modifier le compte Compte joint" }).click();
     await expectNoA11yViolations(page);
@@ -41,11 +41,14 @@ test.describe("Mes comptes", () => {
 
     await navigate(page, "/");
     await openAdd(page);
-    await expect(sheet(page).getByRole("button", { name: /Livret A/ })).toBeVisible();
+    // V3 : un compte d'épargne ne se mouvemente que par transfert ; un compte désactivé n'est plus proposé.
+    await expect(sheet(page).getByRole("button", { name: /Compte courant/ })).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: /Livret A/ })).toHaveCount(0);
     await expect(sheet(page).getByRole("button", { name: /Espèces/ })).toHaveCount(0);
     await sheet(page).getByRole("radio", { name: "Épargne" }).click();
     await expect(sheet(page).getByText("Depuis le compte")).toBeVisible();
-    await expect(sheet(page).getByRole("button", { name: /Livret A/ })).toHaveCount(0);
+    await expect(sheet(page).getByText("Vers le compte d'épargne")).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: /Livret A/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("ordre d'affichage", async ({ page }) => {
@@ -58,6 +61,60 @@ test.describe("Mes comptes", () => {
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
     const names = await page.getByRole("button", { name: /^Modifier le compte / }).evaluateAll((nodes) => nodes.map((n) => n.getAttribute("aria-label")));
     expect(names[0]).toBe("Modifier le compte Livret A");
+  });
+});
+
+test.describe("Épargne : transfert entre comptes", () => {
+  const row = (page: import("@playwright/test").Page, name: string) => page.getByRole("button", { name: `Modifier le compte ${name}` });
+
+  test("verser 100 € du compte courant vers le Livret A : soldes déplacés, patrimoine inchangé, disponible déduit une fois", async ({ page }) => {
+    await page.goto("/parametres");
+    const patrimoine = page.getByRole("listitem").filter({ hasText: "Patrimoine total" });
+    const before = clean(await patrimoine.innerText());
+    await expect(row(page, "Livret A")).toContainText("650,00");
+    await expect(row(page, "Compte courant")).toContainText("2 090,29");
+
+    await navigate(page, "/");
+    await openAdd(page);
+    await sheet(page).getByRole("radio", { name: "Épargne" }).click();
+    await sheet(page).getByLabel("Montant en euros").fill("100");
+    await sheet(page).getByLabel(/Note/).fill("Transfert de test");
+    await sheet(page).getByRole("button", { name: /^Ajouter −100/ }).click();
+    await expect(page.getByText(/Épargne ajoutée/)).toBeVisible();
+
+    await navigate(page, "/parametres");
+    await expect(row(page, "Livret A")).toContainText("750,00");
+    await expect(row(page, "Compte courant")).toContainText("1 990,29");
+    expect(clean(await patrimoine.innerText())).toBe(before);
+
+    await navigate(page, "/transactions");
+    await page.getByRole("button", { name: /Virement épargne|Épargne/ }).first().click();
+    await expect(sheet(page).getByText("Depuis")).toBeVisible();
+    await expect(sheet(page).getByText("Vers")).toBeVisible();
+  });
+
+  test("désactiver un compte met en pause ses récurrences ; elles ne peuvent pas repartir tant qu'il est désactivé", async ({ page }) => {
+    await page.goto("/parametres");
+    await row(page, "Compte courant").click();
+    await sheet(page).getByRole("switch", { name: "Compte actif" }).click();
+    await expect(sheet(page).getByText(/9 récurrences actives sur ce compte seront mises en pause/)).toBeVisible();
+    await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByText("« Compte courant » désactivé · 9 récurrences en pause")).toBeVisible();
+
+    await navigate(page, "/budget");
+    await expect(page.getByRole("button", { name: /Netflix/ })).toContainText("En pause");
+    await page.getByRole("button", { name: /Netflix/ }).click();
+    await sheet(page).getByRole("switch", { name: "Récurrence active" }).click();
+    await expect(sheet(page).getByText(/Un de ses comptes est désactivé/)).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  });
+});
+
+test.describe("Mot de passe oublié", () => {
+  test("en démo, la page explique pourquoi elle est indisponible", async ({ page }) => {
+    await page.goto("/mot-de-passe-oublie");
+    await expect(page.getByRole("heading", { name: "Mode démo" })).toBeVisible();
+    await expectNoA11yViolations(page);
   });
 });
 

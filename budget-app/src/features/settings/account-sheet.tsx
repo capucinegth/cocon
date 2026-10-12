@@ -11,7 +11,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Toggle } from "@/components/ui/toggle";
 import { isLiquidAccount } from "@/config/accounts";
 import { useAsyncAction } from "@/hooks/use-async-action";
-import { accountBalance, accountTypeLabel, canDeactivateAccount } from "@/lib/accounts";
+import { accountBalance, accountTypeLabel, activeRulesUsingAccount, canDeactivateAccount } from "@/lib/accounts";
 import { parseAmountInput, roundCents } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
@@ -19,7 +19,7 @@ import { useUI } from "@/store/ui-store";
 type Sign = "positive" | "negative";
 
 function AccountForm({ accountId }: { accountId: string }) {
-  const { accounts, allTransactions, today, updateAccount, moveAccount } = useBudget();
+  const { accounts, allTransactions, recurring, today, updateAccount, moveAccount } = useBudget();
   const { closeSheet, showToast } = useUI();
   const account = accounts.find((a) => a.id === accountId);
   const index = accounts.findIndex((a) => a.id === accountId);
@@ -38,6 +38,8 @@ function AccountForm({ accountId }: { accountId: string }) {
   const liquid = isLiquidAccount(account);
   const initialBalance = roundCents(parseAmountInput(balanceText) * (sign === "negative" ? -1 : 1));
   const deactivationBlocked = account.isActive && !canDeactivateAccount(accounts, account.id);
+  // Récurrences actives sur ce compte : mises en pause automatiquement s'il est désactivé.
+  const rulesToPause = account.isActive && !isActive ? activeRulesUsingAccount(recurring, account.id) : [];
   const changedFields = label.trim() !== account.label || initialBalance !== account.initialBalance || isActive !== account.isActive;
   const changedPosition = position !== index;
   const canSubmit = label.trim().length > 0 && (changedFields || changedPosition) && !pending;
@@ -46,13 +48,15 @@ function AccountForm({ accountId }: { accountId: string }) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
+    let paused = 0;
     const ok = await run(async () => {
-      if (changedFields) await updateAccount(account!.id, { label: label.trim(), initialBalance, isActive });
+      if (changedFields) paused = await updateAccount(account!.id, { label: label.trim(), initialBalance, isActive });
       if (changedPosition) await moveAccount(account!.id, position);
     });
     if (!ok) return;
     closeSheet();
-    showToast(isActive ? `« ${label.trim()} » mis à jour` : `« ${label.trim()} » désactivé`);
+    const pausedText = paused > 0 ? ` · ${paused} récurrence${paused > 1 ? "s" : ""} en pause` : "";
+    showToast(isActive ? `« ${label.trim()} » mis à jour` : `« ${label.trim()} » désactivé${pausedText}`);
   }
 
   return (
@@ -93,7 +97,10 @@ function AccountForm({ accountId }: { accountId: string }) {
             />
           )}
           <p className="mt-2 text-[13px] text-muted">
-            Ce qu&apos;il y avait sur ce compte quand tu as commencé à le suivre dans Cocon. Le solde calculé y ajoute les opérations saisies sur ce compte.
+            Ce qu&apos;il y avait sur ce compte quand tu as commencé à le suivre dans Cocon.{" "}
+            {liquid
+              ? "Le solde calculé y ajoute les opérations saisies sur ce compte."
+              : "Le solde calculé y ajoute les versements d'épargne reçus (transferts depuis tes autres comptes)."}
           </p>
         </FormField>
 
@@ -103,7 +110,9 @@ function AccountForm({ accountId }: { accountId: string }) {
             <span className="block text-[13px] text-muted">
               {deactivationBlocked
                 ? "Garde au moins un compte actif hors épargne pour saisir tes opérations."
-                : "Désactivé, il n'est plus proposé pour les nouvelles opérations. Son historique est conservé."}
+                : rulesToPause.length > 0
+                  ? `${rulesToPause.length} récurrence${rulesToPause.length > 1 ? "s" : ""} active${rulesToPause.length > 1 ? "s" : ""} sur ce compte ${rulesToPause.length > 1 ? "seront mises" : "sera mise"} en pause. L'historique est conservé.`
+                  : "Désactivé, il n'est plus proposé pour les nouvelles opérations. Son historique est conservé."}
             </span>
           </span>
           {deactivationBlocked ? (

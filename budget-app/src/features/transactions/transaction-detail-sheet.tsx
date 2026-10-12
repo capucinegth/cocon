@@ -68,7 +68,14 @@ function TransactionDetail({ transaction: opened }: { transaction: Transaction }
           {formatLongDate(transaction.date)}
           {planned && <span className="text-muted"> · prévue</span>}
         </Row>
-        <Row label="Compte">{findAccount(accounts, transaction.accountId).label}</Row>
+        {transaction.kind === "saving" ? (
+          <>
+            <Row label="Depuis">{findAccount(accounts, transaction.accountId).label}</Row>
+            <Row label="Vers">{transaction.transferAccountId ? findAccount(accounts, transaction.transferAccountId).label : "Compte non précisé"}</Row>
+          </>
+        ) : (
+          <Row label="Compte">{findAccount(accounts, transaction.accountId).label}</Row>
+        )}
         <Row label="Récurrence">
           {recurrenceLabels[rule?.frequency ?? transaction.recurrence ?? "none"]}
           {rule && !rule.isActive && <span className="text-muted"> · en pause</span>}
