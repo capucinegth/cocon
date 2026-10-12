@@ -14,15 +14,9 @@
 --     une épargne existante sans destination reste valide (« compte de destination non précisé ») ;
 --   * la fonction de génération est remplacée à l'identique (même signature, mêmes droits),
 --     avec les deux seuls changements décrits ci-dessus ;
---   * aucun DROP de table, de colonne ni de donnée.
+--   * aucune suppression de table, de colonne ni de donnée.
 --
--- Retour arrière (si nécessaire, sans perte des données antérieures) :
---   drop trigger transactions_check_transfer on public.transactions;
---   drop trigger recurring_transactions_check_transfer on public.recurring_transactions;
---   drop function public.check_transfer_accounts();
---   alter table public.transactions drop column transfer_account_id;
---   alter table public.recurring_transactions drop column transfer_account_id;
---   puis ré-exécuter la définition de materialize_recurring_transactions de la migration 20261005090300.
+-- Retour arrière (si nécessaire, sans perte des données antérieures) : voir docs/SUPABASE.md.
 -- =============================================================================
 
 -- Compte de destination d'une épargne ---------------------------------------------------

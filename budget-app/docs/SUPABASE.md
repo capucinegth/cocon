@@ -62,7 +62,18 @@ les migrations **nouvelles**, une à une, dans le **SQL Editor**, AVANT de dépl
 `20261012090000_cocon_transferts_epargne.sql` : deux colonnes facultatives (NULL par défaut),
 contraintes et index qui ne portent que sur elles, un contrôle du sens des transferts et la fonction
 de génération mise à jour. Aucune ligne existante n'est modifiée ; les anciennes épargnes restent
-valides (« compte de destination non précisé »). Retour arrière possible : voir l'en-tête du fichier.
+valides (« compte de destination non précisé »).
+
+Retour arrière, seulement si nécessaire (les données antérieures à la migration sont conservées ;
+seuls les comptes de destination saisis depuis seraient perdus) :
+```sql
+drop trigger transactions_check_transfer on public.transactions;
+drop trigger recurring_transactions_check_transfer on public.recurring_transactions;
+drop function public.check_transfer_accounts();
+alter table public.transactions drop column transfer_account_id;
+alter table public.recurring_transactions drop column transfer_account_id;
+-- puis ré-exécuter la définition de materialize_recurring_transactions de 20261005090300_cocon_functions.sql
+```
 
 > Ne jamais appliquer `supabase/tests/support/local-auth-shim.sql` : il ne sert qu'aux tests locaux.
 
