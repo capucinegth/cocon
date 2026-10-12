@@ -11,7 +11,7 @@ import { todayInParis } from "@/lib/paris-time";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { dataSource, type DataSource } from "@/lib/supabase/env";
 import { createDemoRepository, createDemoState } from "@/services/demo-repository";
-import { errorMessage, isSessionError, type BudgetRepository } from "@/services/repository";
+import { errorMessage, isSessionError, RepositoryError, type BudgetRepository } from "@/services/repository";
 import { createSupabaseRepository } from "@/services/supabase-repository";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
 import type { AccountId, Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
@@ -19,10 +19,12 @@ import {
   buildCategory,
   buildGoal,
   buildTransaction,
+  canArchiveCategory,
   deriveBudgetData,
   editTransaction,
   resolveRecurringPatch,
   withArchivedCategory,
+  withRestoredCategory,
   withCategory,
   withCategoryBudget,
   withEditedTransaction,
@@ -72,6 +74,7 @@ interface BudgetContextValue extends BudgetData {
   addCategory: (input: NewCategoryInput, month?: string) => Promise<Category>;
   updateCategory: (id: CategoryId, patch: Partial<Pick<Category, "label" | "emoji" | "tone">>) => Promise<void>;
   archiveCategory: (id: CategoryId) => Promise<void>;
+  restoreCategory: (id: CategoryId) => Promise<void>;
   setCategoryBudget: (month: string, categoryId: CategoryId, amount: number) => Promise<void>;
   setMonthTargets: (month: string, targets: MonthTargets) => Promise<void>;
   addGoal: (input: NewGoalInput) => Promise<SavingsGoal>;
@@ -282,9 +285,20 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const archiveCategory = useCallback(
     async (id: CategoryId) => {
+      if (!canArchiveCategory(requireState().categories, id)) throw new RepositoryError("Garde au moins une catégorie active de ce type.", "validation");
       await commit(
         () => repository.archiveCategory(id),
         (current) => withArchivedCategory(current, id),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const restoreCategory = useCallback(
+    async (id: CategoryId) => {
+      await commit(
+        () => repository.restoreCategory(id),
+        (current) => withRestoredCategory(current, id),
       );
     },
     [commit, repository],
@@ -421,6 +435,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       addCategory,
       updateCategory,
       archiveCategory,
+      restoreCategory,
       setCategoryBudget,
       setMonthTargets,
       addGoal,
@@ -447,6 +462,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     addCategory,
     updateCategory,
     archiveCategory,
+    restoreCategory,
     setCategoryBudget,
     setMonthTargets,
     addGoal,

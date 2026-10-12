@@ -182,7 +182,8 @@ export function editTransaction(state: Pick<BudgetState, "categories" | "goals">
 export interface CategoryInput {
   label: string;
   emoji: string;
-  group: "fixes" | "variables";
+  /** Dépenses (fixes / quotidien) ou revenus. L'épargne garde sa catégorie unique. */
+  group: "fixes" | "variables" | "revenus";
   tone: Tone;
 }
 
@@ -260,6 +261,29 @@ export function withUpdatedCategory(state: BudgetState, id: CategoryId, patch: P
 /** Archiver : la catégorie disparaît des listes mais l'historique est conservé. */
 export function withArchivedCategory(state: BudgetState, id: CategoryId): BudgetState {
   return { ...state, categories: state.categories.map((c) => (c.id === id ? { ...c, archived: true } : c)) };
+}
+
+/** Restaurer une catégorie archivée : elle redevient proposée pour les nouvelles opérations. */
+export function withRestoredCategory(state: BudgetState, id: CategoryId): BudgetState {
+  return { ...state, categories: state.categories.map((c) => (c.id === id ? { ...c, archived: undefined } : c)) };
+}
+
+const categoryFamily = (category: Category) => (category.group === "revenus" ? "income" : category.group === "epargne" ? "saving" : "expense");
+
+/**
+ * On peut archiver une catégorie de dépense ou de revenu, sauf la dernière active de sa famille
+ * (sinon plus aucune dépense / aucun revenu ne pourrait être saisi). La catégorie d'épargne reste toujours active.
+ */
+export function canArchiveCategory(categories: Category[], id: CategoryId): boolean {
+  const category = categories.find((c) => c.id === id);
+  if (!category || category.archived || category.group === "epargne") return false;
+  return categories.some((c) => c.id !== id && !c.archived && categoryFamily(c) === categoryFamily(category));
+}
+
+/** Une catégorie active porte déjà ce nom (la base refuse deux catégories actives du même nom). */
+export function hasActiveCategoryNamed(categories: Category[], label: string, exceptId?: CategoryId): boolean {
+  const name = label.trim().toLocaleLowerCase("fr");
+  return categories.some((c) => c.id !== exceptId && !c.archived && c.label.trim().toLocaleLowerCase("fr") === name);
 }
 
 /** Budget d'un mois : celui du mois, ou une copie du précédent (comme `ensure_month_budget`). */

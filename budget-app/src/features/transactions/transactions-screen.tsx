@@ -11,7 +11,7 @@ import { Money } from "@/components/ui/money";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectPill } from "@/components/ui/select-pill";
 import { findAccount } from "@/config/accounts";
-import { availableMonths, groupByDay, monthTransactions, monthUpcoming, signedAmount, total } from "@/lib/budget";
+import { availableMonths, groupByDay, monthTransactions, monthUpcoming, signedAmount, total, withPlannedMonths } from "@/lib/budget";
 import { formatDayHeading, formatMonth, formatShortDate } from "@/lib/dates";
 import { normalizeText } from "@/lib/text";
 import { useBudget, useCategoryLookup } from "@/store/budget-store";
@@ -36,7 +36,8 @@ export function TransactionsScreen() {
   const [categoryId, setCategoryId] = useState("all");
   const [query, setQuery] = useState("");
 
-  const months = useMemo(() => availableMonths(data), [data]);
+  // Mois passés et en cours, plus les mois futurs qui ont des opérations prévues.
+  const months = useMemo(() => withPlannedMonths(availableMonths(data), data.allTransactions, data.today), [data]);
   const q = normalizeText(query.trim());
   const matches = (label: string, id: string) =>
     (categoryId === "all" || categoryId === id) &&

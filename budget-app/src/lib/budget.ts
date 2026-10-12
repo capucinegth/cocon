@@ -31,6 +31,12 @@ export function availableMonths(data: Pick<BudgetData, "transactions" | "today">
   return [...months].sort();
 }
 
+/** Ajoute les mois futurs qui contiennent des opérations prévues (datées après aujourd'hui). */
+export function withPlannedMonths(months: string[], transactions: Pick<Transaction, "date">[], today: string): string[] {
+  const future = transactions.filter((t) => t.date > today).map((t) => monthKey(t.date));
+  return [...new Set([...months, ...future])].sort();
+}
+
 /**
  * Budget applicable à un mois : celui du mois, sinon le dernier budget antérieur
  * (reconduit automatiquement tant que l'utilisateur ne le modifie pas).
@@ -245,8 +251,12 @@ export function getVariablePaidByCategory(data: BudgetData, month: string, until
 }
 
 export interface MonthComparison {
+  month: string;
   previousMonth: string;
+  /** Comparaison du 1er à ce jour inclus. */
   day: number;
+  /** Mois terminé : comparé sur le mois entier. */
+  full: boolean;
   current: number;
   previous: number;
   /** Variation relative (−0,08 = 8 % de moins). */
@@ -254,23 +264,30 @@ export interface MonthComparison {
   byCategory: { category: Category; current: number; previous: number }[];
 }
 
-/** Dépenses du quotidien du mois en cours vs le mois précédent, à la même date. */
-export function compareWithPreviousMonth(data: BudgetData): MonthComparison | null {
+/**
+ * Dépenses du quotidien d'un mois vs le mois précédent : à la même date pour le mois en cours,
+ * sur le mois entier pour un mois terminé.
+ */
+export function compareWithPreviousMonth(data: BudgetData, month: string = monthKey(data.today)): MonthComparison | null {
   const months = availableMonths(data);
-  const month = monthKey(data.today);
-  const previousMonth = months[months.indexOf(month) - 1];
+  const index = months.indexOf(month);
+  const previousMonth = index > 0 ? months[index - 1] : undefined;
   if (!previousMonth) return null;
 
-  const day = dayOfMonth(data.today);
+  const full = month < monthKey(data.today);
+  const day = full ? daysInMonth(`${month}-01`) : dayOfMonth(data.today);
   const now = getVariablePaidByCategory(data, month, day);
-  const before = getVariablePaidByCategory(data, previousMonth, day);
+  // Mois terminé : le mois précédent est pris en entier, quelle que soit sa longueur.
+  const before = getVariablePaidByCategory(data, previousMonth, full ? 31 : day);
   const current = total([...now.values()]);
   const previous = total([...before.values()]);
   const ids = new Set([...now.keys(), ...before.keys()]);
 
   return {
+    month,
     previousMonth,
     day,
+    full,
     current,
     previous,
     delta: previous > 0 ? (current - previous) / previous : 0,

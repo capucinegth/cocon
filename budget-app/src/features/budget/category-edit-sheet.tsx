@@ -8,14 +8,22 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { AmountInput, EmojiPicker, FormField, TextInput, TonePicker, amountToInput } from "@/components/ui/form";
 import { FormError } from "@/components/ui/form-error";
 import { Sheet } from "@/components/ui/sheet";
-import { emojiChoices, findCategory, toneChoices } from "@/config/categories";
+import { emojiChoices, findCategory, isExpenseCategory, toneChoices } from "@/config/categories";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { planFor } from "@/lib/budget";
 import { formatMonth } from "@/lib/dates";
 import { parseAmountInput, roundCents } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
-import type { Tone } from "@/types/finance";
+import { canArchiveCategory, hasActiveCategoryNamed } from "@/store/budget-state";
+import type { CategoryGroup, Tone } from "@/types/finance";
+
+const groupLabel: Record<CategoryGroup, string> = {
+  fixes: "Charge fixe",
+  variables: "Dépense du quotidien",
+  revenus: "Revenu",
+  epargne: "Épargne",
+};
 
 function CategoryEditForm({ categoryId, month }: { categoryId: string; month: string }) {
   const data = useBudget();
@@ -29,10 +37,14 @@ function CategoryEditForm({ categoryId, month }: { categoryId: string; month: st
   const save = useAsyncAction();
   const archive = useAsyncAction();
 
+  // Seules les dépenses ont une enveloppe budgétaire.
+  const hasBudget = isExpenseCategory(category);
   const budget = roundCents(parseAmountInput(budgetText));
   const changedLook = label.trim() !== category.label || emoji !== category.emoji || tone !== category.tone;
-  const changedBudget = budget !== planned;
-  const canSubmit = label.trim().length > 0 && (changedLook || changedBudget) && !save.pending;
+  const changedBudget = hasBudget && budget !== planned;
+  const duplicate = label.trim() !== category.label && hasActiveCategoryNamed(data.categories, label, categoryId);
+  const canSubmit = label.trim().length > 0 && !duplicate && (changedLook || changedBudget) && !save.pending;
+  const archivable = canArchiveCategory(data.categories, categoryId);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -53,14 +65,16 @@ function CategoryEditForm({ categoryId, month }: { categoryId: string; month: st
           <CategoryBadge emoji={emoji} tone={tone} />
           <div className="min-w-0">
             <p className="break-words font-semibold">{label.trim() || category.label}</p>
-            <p className="text-[13px] text-muted">{category.group === "fixes" ? "Charge fixe" : "Dépense du quotidien"}</p>
+            <p className="text-[13px] text-muted">{groupLabel[category.group]}</p>
           </div>
         </div>
 
-        <FormField label={`Budget de ${formatMonth(month).toLowerCase()}`} as="div">
-          <AmountInput label="Budget du mois en euros" value={budgetText} onChange={setBudgetText} size="md" autoFocus />
-          <p className="mt-2 text-[13px] text-muted">Les mois suivants reprendront ce montant tant que tu ne le changes pas.</p>
-        </FormField>
+        {hasBudget && (
+          <FormField label={`Budget de ${formatMonth(month).toLowerCase()}`} as="div">
+            <AmountInput label="Budget du mois en euros" value={budgetText} onChange={setBudgetText} size="md" autoFocus />
+            <p className="mt-2 text-[13px] text-muted">Les mois suivants reprendront ce montant tant que tu ne le changes pas.</p>
+          </FormField>
+        )}
 
         <label className="block">
           <span className="mb-2.5 block text-sm font-semibold text-muted">Nom</span>
@@ -75,36 +89,44 @@ function CategoryEditForm({ categoryId, month }: { categoryId: string; month: st
           <TonePicker value={tone} options={toneChoices} onChange={setTone} />
         </FormField>
 
-        <div>
-          <ConfirmButton
-            question={`Archiver « ${category.label} » ? Elle disparaîtra de tes listes ; ses opérations passées restent dans l'historique.`}
-            confirmLabel="Archiver"
-            pending={archive.pending}
-            onConfirm={async () => {
-              const ok = await archive.run(() => data.archiveCategory(categoryId));
-              if (!ok) return;
-              closeSheet();
-              showToast(`« ${category.label} » archivée`);
-            }}
-          >
-            <Archive size={16} aria-hidden />
-            Archiver la catégorie
-          </ConfirmButton>
-          <FormError message={archive.error} className="mt-3" />
-        </div>
+        {archivable ? (
+          <div>
+            <ConfirmButton
+              question={`Archiver « ${category.label} » ? Elle disparaîtra de tes listes ; ses opérations passées restent dans l'historique.`}
+              confirmLabel="Archiver"
+              pending={archive.pending}
+              onConfirm={async () => {
+                const ok = await archive.run(() => data.archiveCategory(categoryId));
+                if (!ok) return;
+                closeSheet();
+                showToast(`« ${category.label} » archivée`);
+              }}
+            >
+              <Archive size={16} aria-hidden />
+              Archiver la catégorie
+            </ConfirmButton>
+            <FormError message={archive.error} className="mt-3" />
+          </div>
+        ) : (
+          category.group !== "epargne" && (
+            <p className="rounded-2xl bg-canvas px-4 py-3 text-[13px] text-muted">
+              C&apos;est ta dernière catégorie active de ce type : elle ne peut pas être archivée.
+            </p>
+          )
+        )}
       </div>
 
       <div className="sticky bottom-0 bg-surface/95 px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 backdrop-blur">
         <FormError message={save.error} className="mb-3" />
         <Button type="submit" size="lg" disabled={!canSubmit} className="w-full" aria-busy={save.pending || undefined}>
-          {save.pending ? "Enregistrement…" : label.trim() ? "Enregistrer" : "Donne-lui un nom"}
+          {save.pending ? "Enregistrement…" : duplicate ? "Ce nom existe déjà" : label.trim() ? "Enregistrer" : "Donne-lui un nom"}
         </Button>
       </div>
     </form>
   );
 }
 
-/** Modifier une catégorie de dépense : budget du mois, nom, icône, couleur ; ou l'archiver. */
+/** Modifier une catégorie : budget du mois (dépenses), nom, icône, couleur ; ou l'archiver. */
 export function CategoryEditSheet() {
   const { sheet, isSheetOpen, sheetSession, closeSheet } = useUI();
   const active = sheet?.type === "categoryEdit" ? sheet : null;

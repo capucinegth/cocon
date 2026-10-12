@@ -1,5 +1,4 @@
 /** « Mes comptes » : soldes, choix dans les formulaires, modifications et enregistrement. */
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import {
   accountBalance,
@@ -14,6 +13,7 @@ import { accountToRow } from "@/services/mappers";
 import { createSupabaseRepository } from "@/services/supabase-repository";
 import { deriveBudgetData, withAccountOrder, withUpdatedAccount } from "@/store/budget-state";
 import type { Account } from "@/types/finance";
+import { fakeClient } from "./fake-supabase";
 import { makeState, tx } from "./fixtures";
 
 const accounts: Account[] = [
@@ -117,35 +117,6 @@ describe("modifier ses comptes", () => {
     });
   });
 });
-
-/** Client Supabase factice : enregistre les requêtes, chaque modification touche une ligne. */
-function fakeClient() {
-  const calls: { table: string; values: Record<string, unknown>; filters: [string, unknown][] }[] = [];
-  const client = {
-    from(table: string) {
-      const call = { table, values: {} as Record<string, unknown>, filters: [] as [string, unknown][] };
-      calls.push(call);
-      const query = {
-        update(values: Record<string, unknown>) {
-          call.values = values;
-          return query;
-        },
-        eq(column: string, value: unknown) {
-          call.filters.push([column, value]);
-          return query;
-        },
-        select() {
-          return query;
-        },
-        then(resolve: (result: { data: unknown; error: null }) => void) {
-          resolve({ data: [{ id: "x" }], error: null });
-        },
-      };
-      return query;
-    },
-  };
-  return { client: client as unknown as SupabaseClient, calls };
-}
 
 describe("enregistrement Supabase des comptes", () => {
   it("modification : par identifiant, sans user_id (la RLS limite aux comptes de l'utilisatrice)", async () => {

@@ -209,6 +209,14 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
       expectRow(rows, "Cette catégorie");
     },
 
+    async restoreCategory(categoryId) {
+      const rows = await must<unknown[]>(
+        client.from("categories").update({ archived_at: null }).eq("id", categoryId).select("id"),
+        "restaurer la catégorie",
+      );
+      expectRow(rows, "Cette catégorie");
+    },
+
     async setCategoryBudget(month, categoryId, amount) {
       const budget = await ensureBudget(month);
       await must(

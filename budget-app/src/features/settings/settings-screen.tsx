@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArchiveRestore,
   Bell,
   CalendarClock,
   CalendarDays,
@@ -30,6 +31,7 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/layout/brand";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Toggle } from "@/components/ui/toggle";
@@ -39,6 +41,7 @@ import { accountBalance, accountTypeLabel, liquidBalance } from "@/lib/accounts"
 import { planFor } from "@/lib/budget";
 import { downloadText, transactionsToCsv } from "@/lib/export";
 import { errorMessage } from "@/services/repository";
+import { hasActiveCategoryNamed } from "@/store/budget-state";
 import { useBudget } from "@/store/budget-store";
 import { useSession } from "@/store/session-store";
 import { useUI } from "@/store/ui-store";
@@ -112,7 +115,7 @@ const notificationDefaults: Record<NotificationKey, boolean> = { budgetAlerts: t
 
 export function SettingsScreen() {
   const data = useBudget();
-  const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile } = data;
+  const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile, restoreCategory } = data;
   const { signOut } = useSession();
   const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets, openAccount } = useUI();
   const router = useRouter();
@@ -126,6 +129,25 @@ export function SettingsScreen() {
   };
 
   const expenseCategories = categories.filter((c) => isExpenseCategory(c) && !c.archived);
+  const categorySections = [
+    { title: "Dépenses", items: expenseCategories },
+    { title: "Revenus", items: categories.filter((c) => c.group === "revenus" && !c.archived) },
+    { title: "Épargne", items: categories.filter((c) => c.group === "epargne" && !c.archived) },
+  ];
+  const archivedCategories = categories.filter((c) => c.archived);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  async function restore(id: string, label: string) {
+    setRestoringId(id);
+    try {
+      await restoreCategory(id);
+      showToast(`« ${label} » restaurée`);
+    } catch (cause) {
+      showError(errorMessage(cause));
+    } finally {
+      setRestoringId(null);
+    }
+  }
   const plan = planFor(data, currentMonth);
   const variableBudget = expenseCategories.filter((c) => c.group === "variables").reduce((acc, c) => acc + (plan?.planned[c.id] ?? 0), 0);
 
@@ -258,25 +280,64 @@ export function SettingsScreen() {
             </SettingsRow>
           </SettingsGroup>
 
-          <SettingsGroup title="Catégories" description="Utilisées pour classer tes dépenses et construire ton budget.">
-            <li className="px-3 py-3">
-              <ul className="flex flex-wrap gap-2" aria-label="Catégories de dépenses">
-                {expenseCategories.map((category) => (
-                  <li key={category.id}>
-                    <button
-                      type="button"
-                      onClick={() => openCategoryEdit(category.id, currentMonth)}
-                      aria-label={`Modifier la catégorie ${category.label}`}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-blush-50"
-                    >
-                      <span aria-hidden>{category.emoji}</span>
-                      {category.label}
-                    </button>
+          <SettingsGroup title="Catégories" description="Pour classer tes opérations et construire ton budget. Touche une catégorie pour la modifier.">
+            {categorySections.map(
+              ({ title, items }) =>
+                items.length > 0 && (
+                  <li key={title} className="px-3 py-3">
+                    <p className="mb-2 text-[13px] font-semibold text-muted">{title}</p>
+                    <ul className="flex flex-wrap gap-2" aria-label={`Catégories : ${title.toLowerCase()}`}>
+                      {items.map((category) => (
+                        <li key={category.id}>
+                          <button
+                            type="button"
+                            onClick={() => openCategoryEdit(category.id, currentMonth)}
+                            aria-label={`Modifier la catégorie ${category.label}`}
+                            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-blush-50"
+                          >
+                            <span aria-hidden>{category.emoji}</span>
+                            {category.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
-                ))}
-              </ul>
-            </li>
-            <SettingsRow icon={Plus} label="Ajouter une catégorie" hint="Nom, icône, couleur et budget" onClick={openCategorySheet}>
+                ),
+            )}
+            {archivedCategories.length > 0 && (
+              <li className="px-3 py-3">
+                <p className="mb-1 text-[13px] font-semibold text-muted">Archivées</p>
+                <p className="mb-2 text-[13px] text-muted">Plus proposées pour les nouvelles opérations ; leur historique est conservé.</p>
+                <ul className="flex flex-col gap-1" aria-label="Catégories archivées">
+                  {archivedCategories.map((category) => {
+                    const conflict = hasActiveCategoryNamed(categories, category.label, category.id);
+                    return (
+                      <li key={category.id} className="flex min-h-12 items-center gap-3 rounded-2xl bg-canvas px-3 py-2">
+                        <span aria-hidden className="text-lg">
+                          {category.emoji}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-[15px] font-medium">{category.label}</span>
+                          {conflict && <span className="block text-[12px] text-muted">Une catégorie active porte déjà ce nom</span>}
+                        </span>
+                        <Button
+                          variant="accent"
+                          size="sm"
+                          disabled={conflict || restoringId !== null}
+                          aria-busy={restoringId === category.id || undefined}
+                          onClick={() => restore(category.id, category.label)}
+                          aria-label={`Restaurer la catégorie ${category.label}`}
+                        >
+                          <ArchiveRestore size={16} aria-hidden />
+                          {restoringId === category.id ? "…" : "Restaurer"}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            )}
+            <SettingsRow icon={Plus} label="Ajouter une catégorie" hint="Dépense ou revenu : nom, icône, couleur" onClick={openCategorySheet}>
               <ChevronRight size={18} className="text-muted" aria-hidden />
             </SettingsRow>
           </SettingsGroup>

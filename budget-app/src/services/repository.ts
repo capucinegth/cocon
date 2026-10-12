@@ -24,6 +24,7 @@ export interface BudgetRepository {
   createCategory(category: Category): Promise<void>;
   updateCategory(category: Category): Promise<void>;
   archiveCategory(categoryId: string): Promise<void>;
+  restoreCategory(categoryId: string): Promise<void>;
 
   /** Montant prévu pour une catégorie, un mois donné (le budget du mois est créé au besoin). */
   setCategoryBudget(month: string, categoryId: string, amount: number): Promise<void>;

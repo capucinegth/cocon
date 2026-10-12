@@ -27,6 +27,7 @@ export function createDemoRepository(): BudgetRepository {
     createCategory: done,
     updateCategory: done,
     archiveCategory: done,
+    restoreCategory: done,
     setCategoryBudget: done,
     setMonthTargets: done,
     createGoal: done,

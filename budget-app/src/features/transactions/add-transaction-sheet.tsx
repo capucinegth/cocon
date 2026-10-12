@@ -50,6 +50,7 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
   const [kind, setKind] = useState<TransactionKind>(editing?.kind ?? preset.kind ?? "expense");
   const [amountText, setAmountText] = useState(amountToInput(editing?.amount));
   const [label, setLabel] = useState(editing?.label ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
   const [categoryId, setCategoryId] = useState<CategoryId | null>(editing && editing.kind !== "saving" ? editing.categoryId : null);
   const [goalId, setGoalId] = useState<string | null>(editing?.goalId ?? preset.goalId ?? null);
   const [accountId, setAccountId] = useState<AccountId>(editing?.accountId ?? defaultAccountId({ accounts }));
@@ -82,11 +83,13 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
       accountId,
       date,
       label,
+      // Vide : la note est effacée.
+      note,
     };
     let saved: Transaction | undefined;
     const ok = await run(async () => {
       saved = editing
-        ? await updateTransaction(editing, { ...input, note: editing.note })
+        ? await updateTransaction(editing, input)
         : await addTransaction({ ...input, recurrence });
     });
     if (!ok || !saved) return;
@@ -128,6 +131,12 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
             Description <span className="font-medium">(facultatif)</span>
           </span>
           <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder={copy.placeholder} maxLength={40} />
+        </label>
+        <label className="block">
+          <span className="mb-2.5 block text-sm font-semibold text-muted">
+            Note <span className="font-medium">(facultatif)</span>
+          </span>
+          <TextInput value={note} onChange={(event) => setNote(event.target.value)} placeholder="Un détail à retenir" maxLength={280} />
         </label>
 
         {kind === "saving" ? (
