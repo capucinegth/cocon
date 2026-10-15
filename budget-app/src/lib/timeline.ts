@@ -6,6 +6,7 @@ import { appConfig } from "@/config/app";
 import { findCategory } from "@/config/categories";
 import type { BudgetData } from "@/types/budget-data";
 import type { MonthHistoryPoint } from "@/types/finance";
+import { savingsAccountIds } from "./accounts";
 import { getMonthSummary, monthTransactions, monthUpcoming, total } from "./budget";
 import { dayOfMonth, daysInMonth, monthKey } from "./dates";
 import { roundCents } from "./format";
@@ -96,8 +97,9 @@ export interface BalancePoint {
 }
 
 /**
- * Solde du compte jour par jour. Pour le mois en cours, la suite du mois est une
- * prévision : prélèvements à venir + disponible dépensé régulièrement chaque jour.
+ * Solde total hors épargne (comptes courants, joints, espèces) jour par jour, à partir des soldes de départ
+ * et des opérations saisies. Pour le mois en cours, la suite du mois est une prévision : prélèvements
+ * à venir + disponible dépensé régulièrement chaque jour.
  */
 export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[] {
   const opening = data.openingBalances[month] ?? 0;
@@ -105,10 +107,14 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
   const days = summary.daysInMonth;
   const today = summary.isCurrent ? summary.dayOfMonth : days;
 
+  // Les opérations du Livret A (comptes d'épargne) n'entrent pas dans ce solde.
+  const savings = savingsAccountIds(data.accounts);
   const movements = new Map<number, number>();
   const add = (day: number, amount: number) => movements.set(day, (movements.get(day) ?? 0) + amount);
-  monthTransactions(data, month).forEach((t) => add(dayOfMonth(t.date), t.kind === "income" ? t.amount : -t.amount));
-  const upcoming = summary.isCurrent ? monthUpcoming(data, month) : [];
+  monthTransactions(data, month)
+    .filter((t) => !savings.has(t.accountId))
+    .forEach((t) => add(dayOfMonth(t.date), t.kind === "income" ? t.amount : -t.amount));
+  const upcoming = summary.isCurrent ? monthUpcoming(data, month).filter((u) => !savings.has(u.accountId)) : [];
   upcoming.forEach((u) => add(dayOfMonth(u.date), u.kind === "income" ? u.amount : -u.amount));
 
   // Épargne prévue mais ni versée ni programmée : réservée dès aujourd'hui.
@@ -130,19 +136,39 @@ export function getBalanceSeries(data: BudgetData, month: string): BalancePoint[
   });
 }
 
-/** Historique mensuel : totaux enregistrés, recalculés quand les transactions détaillées existent. */
-export function getMonthlyHistory(data: BudgetData): (MonthHistoryPoint & { partial: boolean })[] {
-  const current = monthKey(data.today);
-  return data.history.map((point) => {
-    const detailed = monthTransactions(data, point.month).length > 0;
-    if (!detailed) return { ...point, partial: false };
-    const summary = getMonthSummary(data, point.month);
-    return { ...point, expenses: summary.committed, partial: point.month === current };
-  });
+export interface HistoryMonth extends MonthHistoryPoint {
+  /** Mois en cours : pas encore terminé. */
+  partial: boolean;
+  /** Le mois contient des données (opérations, ou totaux enregistrés). */
+  hasData: boolean;
 }
 
-/** Dépenses mensuelles moyennes des mois complets de l'historique. */
-export function averageMonthlyExpenses(history: { expenses: number; partial: boolean }[]): number {
-  const complete = history.filter((p) => !p.partial);
+/**
+ * Historique mensuel : totaux enregistrés, recalculés quand les transactions détaillées existent.
+ * Les mois antérieurs à la première donnée ne sont pas affichés (l'utilisation n'avait pas commencé) ;
+ * le mois en cours est toujours partiel.
+ */
+export function getMonthlyHistory(data: BudgetData): HistoryMonth[] {
+  const current = monthKey(data.today);
+  const points = data.history.map<HistoryMonth>((point) => {
+    const partial = point.month === current;
+    const detailed = monthTransactions(data, point.month).length > 0;
+    if (!detailed) return { ...point, partial, hasData: point.expenses > 0 };
+    const summary = getMonthSummary(data, point.month);
+    return { ...point, expenses: summary.committed, partial, hasData: true };
+  });
+  const first = points.findIndex((point) => point.hasData);
+  // Aucune donnée : on garde au moins le mois en cours.
+  return first === -1 ? points.slice(-1) : points.slice(first);
+}
+
+/** Dépenses mensuelles moyennes des mois terminés qui contiennent des données (0 si aucun). */
+export function averageMonthlyExpenses(history: { expenses: number; partial: boolean; hasData?: boolean }[]): number {
+  const complete = history.filter((p) => !p.partial && p.hasData !== false);
   return complete.length ? total(complete.map((p) => p.expenses)) / complete.length : 0;
+}
+
+/** Nombre de mois terminés pris en compte dans la moyenne. */
+export function averagedMonthsCount(history: { partial: boolean; hasData?: boolean }[]): number {
+  return history.filter((p) => !p.partial && p.hasData !== false).length;
 }

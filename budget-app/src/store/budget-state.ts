@@ -6,13 +6,15 @@
  */
 import { findCategory } from "@/config/categories";
 import { isLiquidAccount } from "@/config/accounts";
+import { accountMovement, preferredAccountId, savingsAccountIds } from "@/lib/accounts";
 import { planFor } from "@/lib/budget";
 import { addMonths, endOfMonth, monthKey } from "@/lib/dates";
 import { roundCents } from "@/lib/format";
-import { nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
+import { firstOccurrenceFrom, nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
 import { slugify } from "@/lib/text";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
 import type {
+  Account,
   AccountId,
   BudgetPlan,
   Category,
@@ -44,6 +46,7 @@ function toUpcoming(t: Transaction): UpcomingItem {
     origin: "planned",
     recurrenceId: t.recurrenceId,
     goalId: t.goalId,
+    transferAccountId: t.transferAccountId,
   };
 }
 
@@ -58,14 +61,17 @@ export function deriveHistory(state: BudgetState, months: string[]): MonthHistor
   });
 }
 
-/** Argent disponible (comptes hors épargne) au 1er de chaque mois. */
+/**
+ * Solde total hors épargne au 1er de chaque mois : soldes de départ des comptes courants / espèces
+ * + opérations enregistrées sur ces comptes (celles du Livret A n'y entrent pas).
+ */
 export function deriveOpeningBalances(state: BudgetState, months: string[]): Record<string, number> {
   const initial = state.accounts.filter(isLiquidAccount).reduce((acc, account) => acc + account.initialBalance, 0);
+  const savings = savingsAccountIds(state.accounts);
+  const liquid = state.transactions.filter((t) => !savings.has(t.accountId));
   return Object.fromEntries(
     months.map((month) => {
-      const net = state.transactions
-        .filter((t) => t.date < `${month}-01`)
-        .reduce((acc, t) => acc + (t.kind === "income" ? t.amount : -t.amount), 0);
+      const net = liquid.filter((t) => t.date < `${month}-01`).reduce((acc, t) => acc + accountMovement(t), 0);
       return [month, roundCents(initial + net)];
     }),
   );
@@ -76,7 +82,7 @@ export function deriveBudgetData(state: BudgetState): BudgetData {
   const { today } = state;
   const past = state.transactions.filter((t) => t.date <= today);
   const planned = state.transactions.filter((t) => t.date > today).map(toUpcoming);
-  const projected = projectRecurring(state.recurring, state.transactions, today, endOfMonth(today));
+  const projected = projectRecurring(state.recurring, state.transactions, today, endOfMonth(today), state.accounts);
   const upcoming = [...planned, ...projected].sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
   const current = monthKey(today);
   const months = Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(current, i - (HISTORY_MONTHS - 1)));
@@ -108,6 +114,8 @@ export interface TransactionInput {
   note?: string;
   recurrence: Recurrence;
   goalId?: string;
+  /** Épargne : compte d'épargne de destination. */
+  transferAccountId?: AccountId;
 }
 
 /** Libellé par défaut : l'objectif (épargne) ou la catégorie. */
@@ -127,6 +135,7 @@ export function buildTransaction(
 ): { transaction: Transaction; rule?: RecurringRule } {
   const label = input.label?.trim() || defaultLabel(state, input);
   const goalId = input.kind === "saving" ? input.goalId : undefined;
+  const transferAccountId = input.kind === "saving" ? input.transferAccountId : undefined;
   const rule: RecurringRule | undefined =
     input.recurrence === "none"
       ? undefined
@@ -138,6 +147,7 @@ export function buildTransaction(
           categoryId: input.categoryId,
           accountId: input.accountId,
           goalId,
+          transferAccountId,
           frequency: input.recurrence,
           anchorDay: input.recurrence === "monthly" ? Number(input.date.slice(8, 10)) : undefined,
           nextOccurrence: nextOccurrenceDate(input.date, input.recurrence, Number(input.date.slice(8, 10))),
@@ -155,6 +165,7 @@ export function buildTransaction(
     recurrence: input.recurrence,
     recurrenceId: rule?.id,
     goalId,
+    transferAccountId,
   };
   return { transaction, rule };
 }
@@ -171,13 +182,15 @@ export function editTransaction(state: Pick<BudgetState, "categories" | "goals">
     date: input.date,
     note: input.note?.trim() || undefined,
     goalId: input.kind === "saving" ? input.goalId : undefined,
+    transferAccountId: input.kind === "saving" ? input.transferAccountId : undefined,
   };
 }
 
 export interface CategoryInput {
   label: string;
   emoji: string;
-  group: "fixes" | "variables";
+  /** Dépenses (fixes / quotidien) ou revenus. L'épargne garde sa catégorie unique. */
+  group: "fixes" | "variables" | "revenus";
   tone: Tone;
 }
 
@@ -257,6 +270,29 @@ export function withArchivedCategory(state: BudgetState, id: CategoryId): Budget
   return { ...state, categories: state.categories.map((c) => (c.id === id ? { ...c, archived: true } : c)) };
 }
 
+/** Restaurer une catégorie archivée : elle redevient proposée pour les nouvelles opérations. */
+export function withRestoredCategory(state: BudgetState, id: CategoryId): BudgetState {
+  return { ...state, categories: state.categories.map((c) => (c.id === id ? { ...c, archived: undefined } : c)) };
+}
+
+const categoryFamily = (category: Category) => (category.group === "revenus" ? "income" : category.group === "epargne" ? "saving" : "expense");
+
+/**
+ * On peut archiver une catégorie de dépense ou de revenu, sauf la dernière active de sa famille
+ * (sinon plus aucune dépense / aucun revenu ne pourrait être saisi). La catégorie d'épargne reste toujours active.
+ */
+export function canArchiveCategory(categories: Category[], id: CategoryId): boolean {
+  const category = categories.find((c) => c.id === id);
+  if (!category || category.archived || category.group === "epargne") return false;
+  return categories.some((c) => c.id !== id && !c.archived && categoryFamily(c) === categoryFamily(category));
+}
+
+/** Une catégorie active porte déjà ce nom (la base refuse deux catégories actives du même nom). */
+export function hasActiveCategoryNamed(categories: Category[], label: string, exceptId?: CategoryId): boolean {
+  const name = label.trim().toLocaleLowerCase("fr");
+  return categories.some((c) => c.id !== exceptId && !c.archived && c.label.trim().toLocaleLowerCase("fr") === name);
+}
+
 /** Budget d'un mois : celui du mois, ou une copie du précédent (comme `ensure_month_budget`). */
 function monthPlan(state: BudgetState, month: string): BudgetPlan {
   const plan = planFor(state, month);
@@ -332,7 +368,33 @@ export function withoutGoal(state: BudgetState, id: string): BudgetState {
   };
 }
 
-export type RecurringPatch = Partial<Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence">>;
+export type RecurringPatch = Partial<
+  Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence" | "frequency" | "anchorDay" | "categoryId" | "accountId" | "transferAccountId">
+>;
+
+/**
+ * Modification complète et cohérente d'une règle récurrente, à partir de ce que l'utilisateur a changé.
+ *   - Mensuel : le jour d'ancrage suit la date choisie (il ne change pas si ni la date ni la fréquence ne changent,
+ *     pour qu'un « 31 » reste un « fin de mois »). Hebdomadaire : pas de jour d'ancrage.
+ *   - Reprise après une pause, ou date choisie dans le passé : la règle repart de sa première échéance
+ *     à partir d'aujourd'hui, sans rattraper les dates passées (aucune opération rétroactive).
+ * Les opérations déjà générées ne sont jamais modifiées.
+ */
+export function resolveRecurringPatch(rule: RecurringRule, patch: RecurringPatch, today: string): RecurringPatch {
+  const frequency = patch.frequency ?? rule.frequency;
+  const requestedDate = patch.nextOccurrence ?? rule.nextOccurrence;
+  const dateChanged = requestedDate !== rule.nextOccurrence;
+  const frequencyChanged = frequency !== rule.frequency;
+  const dayOf = (date: string) => Number(date.slice(8, 10));
+
+  const anchorDay =
+    frequency === "weekly" ? undefined : dateChanged || frequencyChanged || rule.anchorDay === undefined ? dayOf(requestedDate) : rule.anchorDay;
+  const resumed = patch.isActive === true && !rule.isActive;
+  const nextOccurrence =
+    (resumed || dateChanged) && requestedDate < today ? firstOccurrenceFrom({ nextOccurrence: requestedDate, frequency, anchorDay }, today) : requestedDate;
+
+  return { ...patch, frequency, anchorDay, nextOccurrence };
+}
 
 export function withUpdatedRecurring(state: BudgetState, id: string, patch: RecurringPatch): BudgetState {
   return {
@@ -352,6 +414,36 @@ export function withoutRecurring(state: BudgetState, id: string): BudgetState {
   };
 }
 
+export type AccountPatch = Partial<Pick<Account, "label" | "initialBalance" | "isActive">>;
+
+/**
+ * Modifier un compte. Les opérations ne changent jamais (désactiver un compte le retire seulement des choix).
+ * Démo : les soldes d'ouverture figés suivent le nouveau solde de départ.
+ */
+export function withUpdatedAccount(state: BudgetState, id: AccountId, patch: AccountPatch): BudgetState {
+  const account = state.accounts.find((a) => a.id === id);
+  if (!account) return state;
+  const updated: Account = {
+    ...account,
+    ...patch,
+    label: (patch.label ?? account.label).trim(),
+    initialBalance: patch.initialBalance !== undefined ? roundCents(patch.initialBalance) : account.initialBalance,
+  };
+  const delta = isLiquidAccount(account) ? roundCents(updated.initialBalance - account.initialBalance) : 0;
+  const openingBalances =
+    state.openingBalances && delta !== 0
+      ? Object.fromEntries(Object.entries(state.openingBalances).map(([month, value]) => [month, roundCents(value + delta)]))
+      : state.openingBalances;
+  return { ...state, accounts: state.accounts.map((a) => (a.id === id ? updated : a)), openingBalances };
+}
+
+/** Ordre d'affichage des comptes (identifiants dans le nouvel ordre ; les autres gardent leur place à la fin). */
+export function withAccountOrder(state: BudgetState, orderedIds: AccountId[]): BudgetState {
+  const rank = new Map(orderedIds.map((id, index) => [id, index]));
+  const accounts = [...state.accounts].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  return { ...state, accounts };
+}
+
 export type ProfilePatch = Partial<Pick<Profile, "displayName" | "preferences">>;
 
 export function withProfile(state: BudgetState, patch: ProfilePatch): BudgetState {
@@ -367,9 +459,36 @@ export function withProfile(state: BudgetState, patch: ProfilePatch): BudgetStat
   };
 }
 
+/**
+ * Règles des comptes d'une opération ou d'une récurrence (message clair, ou null si tout est valide) :
+ *   - le compte de l'opération (source d'une épargne) est un compte actif hors épargne ;
+ *   - une épargne est un transfert vers un compte d'épargne actif, différent de la source ;
+ *   - en modification, les comptes déjà utilisés restent acceptés même s'ils ont été désactivés depuis.
+ */
+export function accountsProblem(
+  accounts: Account[],
+  input: { kind: TransactionKind; accountId: AccountId; transferAccountId?: AccountId },
+  original?: { accountId: AccountId; transferAccountId?: AccountId },
+): string | null {
+  const source = accounts.find((a) => a.id === input.accountId);
+  if (!source) return "Choisis un compte.";
+  if (!isLiquidAccount(source)) {
+    return input.kind === "saving"
+      ? "L'épargne se verse depuis un compte hors épargne."
+      : "Un compte d'épargne ne reçoit que des transferts d'épargne : choisis un autre compte.";
+  }
+  if (!source.isActive && source.id !== original?.accountId) return `« ${source.label} » est désactivé : choisis un autre compte.`;
+  if (input.kind !== "saving") return null;
+  if (!input.transferAccountId) return "Choisis le compte d'épargne qui reçoit ce versement.";
+  const destination = accounts.find((a) => a.id === input.transferAccountId);
+  if (!destination || isLiquidAccount(destination) || destination.id === source.id) return "La destination doit être un compte d'épargne, différent du compte source.";
+  if (!destination.isActive && destination.id !== original?.transferAccountId) return `« ${destination.label} » est désactivé : choisis un autre compte d'épargne.`;
+  return null;
+}
+
 /** Comptes et catégories par défaut, utilisés par le formulaire d'ajout. */
 export function defaultAccountId(state: Pick<BudgetState, "accounts">): AccountId {
-  return (state.accounts.find((a) => a.isActive && a.type === "checking") ?? state.accounts.find((a) => a.isActive))?.id ?? "";
+  return preferredAccountId(state.accounts);
 }
 
 export function savingCategoryId(state: Pick<BudgetState, "categories">): CategoryId {

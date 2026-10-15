@@ -4,7 +4,7 @@ import { safeNextPath } from "@/lib/safe-path";
 import type { SupabaseEnv } from "./env";
 
 /** Pages accessibles sans être connecté. */
-const AUTH_PAGES = new Set(["/connexion", "/inscription"]);
+const AUTH_PAGES = new Set(["/connexion", "/inscription", "/mot-de-passe-oublie"]);
 const PUBLIC_PREFIXES = ["/auth/"];
 
 function redirect(request: NextRequest, pathname: string, params: Record<string, string>, carry: NextResponse): NextResponse {

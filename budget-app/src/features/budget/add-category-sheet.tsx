@@ -12,14 +12,21 @@ import { useAsyncAction } from "@/hooks/use-async-action";
 import { parseAmountInput } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
+import type { CategoryInput } from "@/store/budget-state";
 import type { Tone } from "@/types/finance";
+
+const groupLabel: Record<CategoryInput["group"], string> = {
+  variables: "Dépense du quotidien",
+  fixes: "Charge fixe",
+  revenus: "Revenu",
+};
 
 function AddCategoryForm() {
   const { addCategory, categories } = useBudget();
   const { closeSheet, showToast } = useUI();
   const { pending, error, run } = useAsyncAction();
   const [label, setLabel] = useState("");
-  const [group, setGroup] = useState<"variables" | "fixes">("variables");
+  const [group, setGroup] = useState<CategoryInput["group"]>("variables");
   const [budgetText, setBudgetText] = useState("");
   const [emoji, setEmoji] = useState("🐾");
   const [tone, setTone] = useState<Tone>("blush");
@@ -30,7 +37,8 @@ function AddCategoryForm() {
     event.preventDefault();
     if (!canSubmit) return;
     const ok = await run(async () => {
-      await addCategory({ label, emoji, group, tone, budget: parseAmountInput(budgetText) });
+      // Un revenu n'a pas d'enveloppe budgétaire.
+      await addCategory({ label, emoji, group, tone, budget: group === "revenus" ? 0 : parseAmountInput(budgetText) });
     });
     if (!ok) return;
     closeSheet();
@@ -44,7 +52,7 @@ function AddCategoryForm() {
           <CategoryBadge emoji={emoji} tone={tone} />
           <div className="min-w-0">
             <p className="break-words font-semibold">{label.trim() || "Nouvelle catégorie"}</p>
-            <p className="text-[13px] text-muted">{group === "fixes" ? "Charge fixe" : "Dépense du quotidien"}</p>
+            <p className="text-[13px] text-muted">{groupLabel[group]}</p>
           </div>
         </div>
 
@@ -61,14 +69,17 @@ function AddCategoryForm() {
             options={[
               { value: "variables", label: "Quotidien" },
               { value: "fixes", label: "Charge fixe" },
+              { value: "revenus", label: "Revenu" },
             ]}
             className="w-full"
           />
         </FormField>
 
-        <FormField label="Budget mensuel" hint="facultatif" as="div">
-          <AmountInput label="Budget mensuel en euros" value={budgetText} onChange={setBudgetText} size="md" />
-        </FormField>
+        {group !== "revenus" && (
+          <FormField label="Budget mensuel" hint="facultatif" as="div">
+            <AmountInput label="Budget mensuel en euros" value={budgetText} onChange={setBudgetText} size="md" />
+          </FormField>
+        )}
 
         <FormField label="Icône">
           <EmojiPicker value={emoji} options={emojiChoices} onChange={setEmoji} />

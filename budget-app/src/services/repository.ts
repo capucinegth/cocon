@@ -9,7 +9,7 @@
 import type { DataSource } from "@/lib/supabase/env";
 import type { MonthTargets, RecurringPatch } from "@/store/budget-state";
 import type { BudgetState } from "@/types/budget-data";
-import type { Category, Preferences, RecurringRule, SavingsGoal, Transaction } from "@/types/finance";
+import type { Account, AccountId, Category, Preferences, RecurringRule, SavingsGoal, Transaction } from "@/types/finance";
 
 export interface BudgetRepository {
   readonly source: DataSource;
@@ -24,6 +24,7 @@ export interface BudgetRepository {
   createCategory(category: Category): Promise<void>;
   updateCategory(category: Category): Promise<void>;
   archiveCategory(categoryId: string): Promise<void>;
+  restoreCategory(categoryId: string): Promise<void>;
 
   /** Montant prévu pour une catégorie, un mois donné (le budget du mois est créé au besoin). */
   setCategoryBudget(month: string, categoryId: string, amount: number): Promise<void>;
@@ -35,6 +36,11 @@ export interface BudgetRepository {
 
   updateRecurring(ruleId: string, patch: RecurringPatch): Promise<void>;
   deleteRecurring(ruleId: string): Promise<void>;
+
+  /** Nom, solde de départ, actif / désactivé. Un compte n'est jamais supprimé (historique conservé). */
+  updateAccount(account: Account): Promise<void>;
+  /** Ordre d'affichage des comptes (identifiants dans le nouvel ordre). */
+  reorderAccounts(orderedIds: AccountId[]): Promise<void>;
 
   /** Enregistre le profil complet après modification (nom affiché, préférences). */
   updateProfile(userId: string, profile: { displayName: string; preferences: Preferences }): Promise<void>;

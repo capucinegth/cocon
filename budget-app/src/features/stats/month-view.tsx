@@ -8,23 +8,29 @@ import { RankedBars } from "@/components/charts/ranked-bars";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { SectionHeader } from "@/components/ui/section-header";
-import { compareWithPreviousMonth, getSpendingByCategory, total } from "@/lib/budget";
+import { compareWithPreviousMonth, getMonthSummary, getSpendingByCategory, total } from "@/lib/budget";
 import { cn } from "@/lib/cn";
 import { formatLongDate, formatMonthName } from "@/lib/dates";
 import { formatMoney } from "@/lib/format";
 import { getDailySpending } from "@/lib/timeline";
 import { useBudget } from "@/store/budget-store";
 
-export function MonthView() {
+/** Un mois (en cours ou terminé) : dépenses jour par jour, répartition, comparaison avec le mois précédent. */
+export function MonthView({ month }: { month: string }) {
   const data = useBudget();
-  const { summary, currentMonth } = data;
-  const comparison = useMemo(() => compareWithPreviousMonth(data), [data]);
-  const daily = useMemo(() => getDailySpending(data, currentMonth), [data, currentMonth]);
-  const spending = getSpendingByCategory(data, currentMonth);
+  const summary = useMemo(() => getMonthSummary(data, month), [data, month]);
+  const isPast = summary.isPast;
+  const monthName = formatMonthName(month).toLowerCase();
+  const comparison = useMemo(() => compareWithPreviousMonth(data, month), [data, month]);
+  const daily = useMemo(() => getDailySpending(data, month), [data, month]);
+  const spending = getSpendingByCategory(data, month);
   const spentSoFar = total(daily.map((d) => d.amount));
   const dailyBudget = summary.variableBudget / summary.daysInMonth;
+  // Mois terminé : pas de budget reconduit, la ligne de référence est la moyenne réellement dépensée.
+  const referenceLabel = isPast ? "Moyenne par jour" : "Budget moyen par jour";
 
   const previousName = comparison ? formatMonthName(comparison.previousMonth).toLowerCase() : "";
+  const than = comparison?.full ? `qu'en ${previousName}` : "que le mois dernier";
   const deltaPercent = comparison ? Math.round(Math.abs(comparison.delta) * 100) : 0;
   const better = comparison ? comparison.delta <= 0 : true;
 
@@ -38,12 +44,12 @@ export function MonthView() {
           <div>
             <p className="text-[17px] font-semibold leading-snug">
               {deltaPercent === 0
-                ? "Tu dépenses au même rythme que le mois dernier."
-                : `Tu as dépensé ${deltaPercent} % de ${better ? "moins" : "plus"} que le mois dernier.`}
+                ? `Tu as dépensé au même rythme ${than}.`
+                : `Tu as dépensé ${deltaPercent} % de ${better ? "moins" : "plus"} ${than}.`}
             </p>
             <p className="mt-1 text-sm text-ink-soft">
-              Dépenses du quotidien du 1er au {comparison.day} : <Money value={comparison.current} /> contre <Money value={comparison.previous} /> en{" "}
-              {previousName}.
+              Dépenses du quotidien {comparison.full ? "sur le mois" : `du 1er au ${comparison.day}`} : <Money value={comparison.current} /> contre{" "}
+              <Money value={comparison.previous} /> en {previousName}.
             </p>
           </div>
         </div>
@@ -54,7 +60,13 @@ export function MonthView() {
           title="Dépenses du mois"
           subtitle={
             <>
-              Au quotidien, jour par jour · <Money value={spentSoFar} /> dépensés sur <Money value={summary.variableBudget} /> prévus
+              Au quotidien, jour par jour · <Money value={spentSoFar} /> dépensés
+              {!isPast && (
+                <>
+                  {" "}
+                  sur <Money value={summary.variableBudget} /> prévus
+                </>
+              )}
             </>
           }
         />
@@ -68,8 +80,8 @@ export function MonthView() {
             planned: d.planned,
           }))}
           labelEvery={7}
-          reference={{ value: dailyBudget, label: "Budget moyen par jour" }}
-          defaultKey={data.today}
+          reference={{ value: dailyBudget, label: referenceLabel }}
+          defaultKey={summary.isCurrent ? data.today : undefined}
           readout
           height={220}
         />
@@ -81,7 +93,7 @@ export function MonthView() {
             <span aria-hidden className="h-2.5 w-3 rounded-[3px] bg-peach-300" /> Prévu
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-0.5 w-4 bg-ink/40" /> Budget moyen par jour ({formatMoney(dailyBudget, { cents: "always" })})
+            <span aria-hidden className="h-0.5 w-4 bg-ink/40" /> {referenceLabel} ({formatMoney(dailyBudget, { cents: "always" })})
           </span>
         </p>
       </Card>
@@ -91,7 +103,7 @@ export function MonthView() {
           title="Répartition des dépenses"
           subtitle={
             <>
-              <Money value={summary.committed} /> engagés ce mois-ci
+              <Money value={summary.committed} /> {isPast ? `dépensés en ${monthName}` : "engagés ce mois-ci"}
             </>
           }
         />
@@ -103,7 +115,10 @@ export function MonthView() {
 
       {comparison && (
         <Card className="animate-rise [animation-delay:150ms]">
-          <SectionHeader title={`Comparaison avec ${previousName}`} subtitle={`Au quotidien, du 1er au ${comparison.day} du mois`} />
+          <SectionHeader
+            title={`Comparaison avec ${previousName}`}
+            subtitle={comparison.full ? "Au quotidien, sur le mois entier" : `Au quotidien, du 1er au ${comparison.day} du mois`}
+          />
           <ComparisonBars
             items={comparison.byCategory.slice(0, 5).map(({ category, current, previous }) => ({
               id: category.id,
@@ -112,7 +127,7 @@ export function MonthView() {
               current,
               previous,
             }))}
-            currentLabel={formatMonthName(currentMonth)}
+            currentLabel={formatMonthName(month)}
             previousLabel={formatMonthName(comparison.previousMonth)}
           />
         </Card>

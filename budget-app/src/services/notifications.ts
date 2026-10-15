@@ -1,5 +1,5 @@
 /**
- * Notifications — ARCHITECTURE PRÉPARÉE, PAS ENCORE ACTIVÉE (« Bientôt » dans les Paramètres).
+ * Notifications — ARCHITECTURE PRÉPARÉE, NON BRANCHÉE (aucun réglage affiché dans l'application).
  *
  * Ce module décide QUOI rappeler, à partir des données et des préférences enregistrées
  * dans le profil (`profiles.preferences.notifications`). L'envoi réel viendra ensuite :

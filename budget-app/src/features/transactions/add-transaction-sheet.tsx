@@ -8,7 +8,6 @@ import { AmountInput, FormField, TextInput, amountToInput } from "@/components/u
 import { FormError } from "@/components/ui/form-error";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
-import { quickAddAccounts } from "@/config/accounts";
 import { isExpenseCategory } from "@/config/categories";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { cn } from "@/lib/cn";
@@ -16,6 +15,7 @@ import { addDays } from "@/lib/dates";
 import { formatMoney, formatPercent, parseAmountInput } from "@/lib/format";
 import { errorMessage } from "@/services/repository";
 import { useBudget } from "@/store/budget-store";
+import { accountChoices, destinationChoices, preferredAccountId, preferredDestinationId } from "@/lib/accounts";
 import { defaultAccountId, savingCategoryId } from "@/store/budget-state";
 import { useUI, type AddPreset } from "@/store/ui-store";
 import type { AccountId, CategoryId, Recurrence, Transaction, TransactionKind } from "@/types/finance";
@@ -50,9 +50,14 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
   const [kind, setKind] = useState<TransactionKind>(editing?.kind ?? preset.kind ?? "expense");
   const [amountText, setAmountText] = useState(amountToInput(editing?.amount));
   const [label, setLabel] = useState(editing?.label ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
   const [categoryId, setCategoryId] = useState<CategoryId | null>(editing && editing.kind !== "saving" ? editing.categoryId : null);
   const [goalId, setGoalId] = useState<string | null>(editing?.goalId ?? preset.goalId ?? null);
   const [accountId, setAccountId] = useState<AccountId>(editing?.accountId ?? defaultAccountId({ accounts }));
+  // Épargne = transfert vers un compte d'épargne. Une ancienne épargne sans destination doit en recevoir une.
+  const [transferAccountId, setTransferAccountId] = useState<AccountId | undefined>(
+    editing ? editing.transferAccountId : preferredDestinationId(accounts),
+  );
   const [dateChoice, setDateChoice] = useState<DateChoice>(initialDateChoice(editing?.date, today));
   const [otherDate, setOtherDate] = useState(editing?.date ?? addDays(today, -2));
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
@@ -63,11 +68,12 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
   const categoryOptions = categories.filter(
     (c) => (!c.archived || c.id === editing?.categoryId) && (kind === "income" ? c.group === "revenus" : isExpenseCategory(c)),
   );
-  const accountOptions = quickAddAccounts(accounts).concat(
-    accounts.filter((a) => a.id === accountId && !quickAddAccounts(accounts).some((q) => q.id === a.id)),
-  );
+  // Comptes actifs hors épargne (source d'une épargne) ; le compte d'origine reste proposé en modification.
+  const accountOptions = accountChoices(accounts, kind, editing?.accountId);
+  const destinationOptions = destinationChoices(accounts, editing?.transferAccountId);
   const needsCategory = kind !== "saving";
-  const canSubmit = amount > 0 && (!needsCategory || categoryId !== null) && !pending;
+  const needsDestination = kind === "saving";
+  const canSubmit = amount > 0 && (!needsCategory || categoryId !== null) && (!needsDestination || transferAccountId !== undefined) && !pending;
   const signed = kind === "income" ? amount : -amount;
   const copy = kindCopy[kind];
   const isFuture = date > today;
@@ -81,13 +87,16 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
       categoryId: kind === "saving" ? savingCategoryId({ categories }) : (categoryId as CategoryId),
       goalId: kind === "saving" ? (goalId ?? undefined) : undefined,
       accountId,
+      transferAccountId: kind === "saving" ? transferAccountId : undefined,
       date,
       label,
+      // Vide : la note est effacée.
+      note,
     };
     let saved: Transaction | undefined;
     const ok = await run(async () => {
       saved = editing
-        ? await updateTransaction(editing, { ...input, note: editing.note })
+        ? await updateTransaction(editing, input)
         : await addTransaction({ ...input, recurrence });
     });
     if (!ok || !saved) return;
@@ -115,6 +124,8 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
           onChange={(next) => {
             setKind(next);
             setCategoryId(null);
+            // L'épargne se verse depuis un compte hors épargne.
+            if (!accountChoices(accounts, next, editing?.accountId).some((a) => a.id === accountId)) setAccountId(preferredAccountId(accounts, next));
           }}
           options={(Object.keys(kindCopy) as TransactionKind[]).map((value) => ({ value, label: kindCopy[value].label }))}
           className="w-full"
@@ -127,6 +138,12 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
             Description <span className="font-medium">(facultatif)</span>
           </span>
           <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder={copy.placeholder} maxLength={40} />
+        </label>
+        <label className="block">
+          <span className="mb-2.5 block text-sm font-semibold text-muted">
+            Note <span className="font-medium">(facultatif)</span>
+          </span>
+          <TextInput value={note} onChange={(event) => setNote(event.target.value)} placeholder="Un détail à retenir" maxLength={280} />
         </label>
 
         {kind === "saving" ? (
@@ -228,7 +245,7 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
         )}
 
         {accountOptions.length > 0 && (
-          <FormField label="Compte">
+          <FormField label={kind === "saving" ? "Depuis le compte" : "Compte"}>
             <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
               {accountOptions.map((account) => (
                 <ChoiceChip key={account.id} selected={account.id === accountId} onClick={() => setAccountId(account.id)}>
@@ -237,6 +254,25 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
                 </ChoiceChip>
               ))}
             </div>
+          </FormField>
+        )}
+        {kind === "saving" && (
+          <FormField label="Vers le compte d'épargne">
+            {destinationOptions.length > 0 ? (
+              <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6">
+                {destinationOptions.map((account) => (
+                  <ChoiceChip key={account.id} selected={account.id === transferAccountId} onClick={() => setTransferAccountId(account.id)}>
+                    <span aria-hidden>{account.emoji}</span>
+                    {account.label}
+                  </ChoiceChip>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-canvas px-4 py-3 text-[13px] text-muted">
+                Aucun compte d&apos;épargne actif : réactive ton Livret A dans Paramètres → Mes comptes pour y verser ton épargne.
+              </p>
+            )}
+            <p className="mt-2 text-[13px] text-muted">Un transfert entre tes comptes : ton patrimoine ne change pas, l&apos;argent passe sur ton épargne.</p>
           </FormField>
         )}
       </div>
@@ -251,7 +287,9 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
                 ? `Enregistrer ${formatMoney(signed, { sign: "always" })}`
                 : `Ajouter ${formatMoney(signed, { sign: "always" })}`
               : amount > 0
-                ? "Choisis une catégorie"
+                ? needsDestination
+                  ? "Choisis le compte d'épargne"
+                  : "Choisis une catégorie"
                 : "Saisis un montant"}
         </Button>
       </div>

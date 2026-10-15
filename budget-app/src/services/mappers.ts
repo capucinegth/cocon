@@ -58,6 +58,7 @@ export interface CategoryRow {
 export interface TransactionRow {
   id: string;
   account_id: string;
+  transfer_account_id: string | null;
   category_id: string;
   goal_id: string | null;
   recurrence_id: string | null;
@@ -70,6 +71,7 @@ export interface TransactionRow {
 export interface RecurringRow {
   id: string;
   account_id: string;
+  transfer_account_id: string | null;
   category_id: string;
   goal_id: string | null;
   type: TransactionKind;
@@ -149,6 +151,15 @@ export function accountFromRow(row: AccountRow): Account {
   };
 }
 
+/** Champs modifiables d'un compte (jamais `user_id` ni le type : la RLS et la base s'en chargent). */
+export function accountToRow(account: Pick<Account, "label" | "initialBalance" | "isActive">) {
+  return {
+    name: account.label.trim(),
+    initial_balance_cents: toCents(account.initialBalance),
+    is_active: account.isActive,
+  };
+}
+
 /* ------------------------------------------------------------------- Opérations */
 
 export function transactionFromRow(row: TransactionRow, rules: Map<string, RecurringRule>, categoryLabel: (id: string) => string): Transaction {
@@ -165,6 +176,7 @@ export function transactionFromRow(row: TransactionRow, rules: Map<string, Recur
     recurrence: rule?.frequency ?? "none",
     recurrenceId: row.recurrence_id ?? undefined,
     goalId: row.goal_id ?? undefined,
+    transferAccountId: row.transfer_account_id ?? undefined,
   };
 }
 
@@ -174,6 +186,7 @@ export function transactionToRow(transaction: Transaction) {
     account_id: transaction.accountId,
     category_id: transaction.categoryId,
     goal_id: transaction.kind === "saving" ? (transaction.goalId ?? null) : null,
+    transfer_account_id: transaction.kind === "saving" ? (transaction.transferAccountId ?? null) : null,
     recurrence_id: transaction.recurrenceId ?? null,
     type: transaction.kind,
     amount_cents: toCents(transaction.amount),
@@ -194,6 +207,7 @@ export function recurringFromRow(row: RecurringRow, categoryLabel: (id: string) 
     categoryId: row.category_id,
     accountId: row.account_id,
     goalId: row.goal_id ?? undefined,
+    transferAccountId: row.transfer_account_id ?? undefined,
     frequency: row.frequency,
     nextOccurrence: row.next_occurrence,
     anchorDay: row.anchor_day ?? undefined,
@@ -207,6 +221,7 @@ export function recurringToRow(rule: RecurringRule) {
     account_id: rule.accountId,
     category_id: rule.categoryId,
     goal_id: rule.kind === "saving" ? (rule.goalId ?? null) : null,
+    transfer_account_id: rule.kind === "saving" ? (rule.transferAccountId ?? null) : null,
     type: rule.kind,
     amount_cents: toCents(rule.amount),
     description: rule.label,

@@ -2,8 +2,19 @@
  * Opérations récurrentes : même règle de calcul que la fonction SQL
  * `public.next_occurrence_date` (testées l'une contre l'autre).
  */
-import type { RecurringRule, Transaction, UpcomingItem } from "@/types/finance";
+import type { Account, RecurringRule, Transaction, UpcomingItem } from "@/types/finance";
 import { addDays, daysInMonth } from "./dates";
+
+/**
+ * Une règle génère des opérations si elle est active et si ses comptes (source et destination)
+ * sont actifs — exactement comme `materialize_recurring_transactions` en base.
+ */
+function generates(rule: RecurringRule, accounts?: Account[]): boolean {
+  if (!rule.isActive) return false;
+  if (!accounts) return true;
+  const inactive = (id?: string) => id !== undefined && accounts.some((a) => a.id === id && !a.isActive);
+  return !inactive(rule.accountId) && !inactive(rule.transferAccountId);
+}
 
 /** Sécurité : jamais plus d'occurrences générées d'un coup (comme côté base). */
 const MAX_OCCURRENCES = 500;
@@ -20,6 +31,19 @@ export function nextOccurrenceDate(date: string, frequency: RecurringRule["frequ
   const monthStart = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
   const targetDay = Math.min(anchorDay ?? day, daysInMonth(monthStart));
   return `${monthStart.slice(0, 8)}${String(targetDay).padStart(2, "0")}`;
+}
+
+/**
+ * Première échéance de la règle à partir de `from` (incluse), en suivant son rythme
+ * (même jour d'ancrage). Sert à reprendre une règle sans rattraper les dates passées.
+ */
+export function firstOccurrenceFrom(rule: Pick<RecurringRule, "nextOccurrence" | "frequency" | "anchorDay">, from: string): string {
+  let date = rule.nextOccurrence;
+  // Garde-fou : une règle hebdomadaire en pause depuis des décennies reste bornée.
+  for (let guard = 0; date < from && guard < 10_000; guard += 1) {
+    date = nextOccurrenceDate(date, rule.frequency, rule.anchorDay);
+  }
+  return date;
 }
 
 /** Occurrences d'une règle entre `nextOccurrence` et `until` (inclus). */
@@ -42,10 +66,11 @@ export function projectRecurring(
   transactions: Pick<Transaction, "recurrenceId" | "date">[],
   today: string,
   until: string,
+  accounts?: Account[],
 ): UpcomingItem[] {
   const existing = new Set(transactions.filter((t) => t.recurrenceId).map((t) => `${t.recurrenceId}|${t.date}`));
   return rules
-    .filter((rule) => rule.isActive)
+    .filter((rule) => generates(rule, accounts))
     .flatMap((rule) =>
       occurrencesUntil(rule, until)
         .filter((date) => date > today && !existing.has(`${rule.id}|${date}`))
@@ -57,6 +82,7 @@ export function projectRecurring(
           categoryId: rule.categoryId,
           accountId: rule.accountId,
           goalId: rule.goalId,
+          transferAccountId: rule.transferAccountId,
           date,
           origin: "recurring",
           recurrenceId: rule.id,
@@ -73,11 +99,12 @@ export function materializeRecurring(
   transactions: Transaction[],
   until: string,
   makeId: () => string,
+  accounts?: Account[],
 ): { transactions: Transaction[]; rules: RecurringRule[]; created: Transaction[] } {
   const existing = new Set(transactions.filter((t) => t.recurrenceId).map((t) => `${t.recurrenceId}|${t.date}`));
   const created: Transaction[] = [];
   const nextRules = rules.map((rule) => {
-    if (!rule.isActive || rule.nextOccurrence > until) return rule;
+    if (!generates(rule, accounts) || rule.nextOccurrence > until) return rule;
     const dates = occurrencesUntil(rule, until);
     dates
       .filter((date) => !existing.has(`${rule.id}|${date}`))
@@ -90,6 +117,7 @@ export function materializeRecurring(
           categoryId: rule.categoryId,
           accountId: rule.accountId,
           goalId: rule.goalId,
+          transferAccountId: rule.transferAccountId,
           date,
           recurrence: rule.frequency,
           recurrenceId: rule.id,

@@ -23,11 +23,6 @@ export function findAccount(list: Account[], id: AccountId): Account {
   return list.find((account) => account.id === id) ?? unknownAccount;
 }
 
-/** Comptes proposés dans le formulaire d'ajout : actifs, hors épargne. */
-export function quickAddAccounts(list: Account[]): Account[] {
-  return list.filter((account) => account.isActive && account.type !== "savings");
-}
-
 /** Comptes pris en compte dans le « solde » (argent disponible, hors épargne). */
 export function isLiquidAccount(account: Account): boolean {
   return account.type !== "savings";

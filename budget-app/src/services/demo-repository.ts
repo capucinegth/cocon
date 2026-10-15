@@ -13,7 +13,7 @@ const done = async () => {};
 /** État de démo prêt à l'emploi (récurrences dues générées, comme le ferait la base). */
 export function createDemoState(): BudgetState {
   const state = getDemoState();
-  const { transactions, rules } = materializeRecurring(state.recurring, state.transactions, state.today, uuid);
+  const { transactions, rules } = materializeRecurring(state.recurring, state.transactions, state.today, uuid, state.accounts);
   return { ...state, transactions, recurring: rules };
 }
 
@@ -27,6 +27,7 @@ export function createDemoRepository(): BudgetRepository {
     createCategory: done,
     updateCategory: done,
     archiveCategory: done,
+    restoreCategory: done,
     setCategoryBudget: done,
     setMonthTargets: done,
     createGoal: done,
@@ -34,6 +35,8 @@ export function createDemoRepository(): BudgetRepository {
     deleteGoal: done,
     updateRecurring: done,
     deleteRecurring: done,
+    updateAccount: done,
+    reorderAccounts: done,
     updateProfile: done,
   };
 }

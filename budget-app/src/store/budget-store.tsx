@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findCategory } from "@/config/categories";
 import { appConfig } from "@/config/app";
+import { activeRulesUsingAccount, canDeactivateAccount, moveInOrder, ruleAccountsActive } from "@/lib/accounts";
 import { getMonthSummary, type MonthSummary } from "@/lib/budget";
 import { monthKey } from "@/lib/dates";
 import { uuid } from "@/lib/ids";
@@ -10,17 +11,21 @@ import { todayInParis } from "@/lib/paris-time";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { dataSource, type DataSource } from "@/lib/supabase/env";
 import { createDemoRepository, createDemoState } from "@/services/demo-repository";
-import { errorMessage, isSessionError, type BudgetRepository } from "@/services/repository";
+import { errorMessage, isSessionError, RepositoryError, type BudgetRepository } from "@/services/repository";
 import { createSupabaseRepository } from "@/services/supabase-repository";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
-import type { Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
+import type { AccountId, Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
 import {
+  accountsProblem,
   buildCategory,
   buildGoal,
   buildTransaction,
+  canArchiveCategory,
   deriveBudgetData,
   editTransaction,
+  resolveRecurringPatch,
   withArchivedCategory,
+  withRestoredCategory,
   withCategory,
   withCategoryBudget,
   withEditedTransaction,
@@ -34,6 +39,9 @@ import {
   withUpdatedCategory,
   withUpdatedGoal,
   withUpdatedRecurring,
+  withAccountOrder,
+  withUpdatedAccount,
+  type AccountPatch,
   type CategoryInput,
   type GoalInput,
   type MonthTargets,
@@ -67,6 +75,7 @@ interface BudgetContextValue extends BudgetData {
   addCategory: (input: NewCategoryInput, month?: string) => Promise<Category>;
   updateCategory: (id: CategoryId, patch: Partial<Pick<Category, "label" | "emoji" | "tone">>) => Promise<void>;
   archiveCategory: (id: CategoryId) => Promise<void>;
+  restoreCategory: (id: CategoryId) => Promise<void>;
   setCategoryBudget: (month: string, categoryId: CategoryId, amount: number) => Promise<void>;
   setMonthTargets: (month: string, targets: MonthTargets) => Promise<void>;
   addGoal: (input: NewGoalInput) => Promise<SavingsGoal>;
@@ -75,6 +84,10 @@ interface BudgetContextValue extends BudgetData {
   updateRecurring: (id: string, patch: RecurringPatch) => Promise<void>;
   removeRecurring: (id: string) => Promise<void>;
   updateProfile: (patch: { displayName?: string; preferences?: Preferences }) => Promise<void>;
+  /** Renvoie le nombre de récurrences mises en pause (compte désactivé). */
+  updateAccount: (id: AccountId, patch: AccountPatch) => Promise<number>;
+  /** Déplace un compte à une position (0 = en premier) dans l'ordre d'affichage. */
+  moveAccount: (id: AccountId, toIndex: number) => Promise<void>;
   resetDemo: () => void;
 }
 
@@ -185,7 +198,10 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const addTransaction = useCallback(
     async (input: NewTransactionInput) => {
-      const { transaction, rule } = buildTransaction(requireState(), input, uuid);
+      const current = requireState();
+      const problem = accountsProblem(current.accounts, input);
+      if (problem) throw new RepositoryError(problem, "validation");
+      const { transaction, rule } = buildTransaction(current, input, uuid);
       await commit(
         () => repository.createTransaction(transaction, rule),
         (current) => withTransaction(current, transaction, rule),
@@ -197,7 +213,10 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const updateTransaction = useCallback(
     async (original: Transaction, input: Omit<NewTransactionInput, "recurrence">) => {
-      const updated = editTransaction(requireState(), original, input);
+      const current = requireState();
+      const problem = accountsProblem(current.accounts, input, original);
+      if (problem) throw new RepositoryError(problem, "validation");
+      const updated = editTransaction(current, original, input);
       await commit(
         () => repository.updateTransaction(updated),
         (current) => withEditedTransaction(current, updated),
@@ -274,9 +293,20 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const archiveCategory = useCallback(
     async (id: CategoryId) => {
+      if (!canArchiveCategory(requireState().categories, id)) throw new RepositoryError("Garde au moins une catégorie active de ce type.", "validation");
       await commit(
         () => repository.archiveCategory(id),
         (current) => withArchivedCategory(current, id),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const restoreCategory = useCallback(
+    async (id: CategoryId) => {
+      await commit(
+        () => repository.restoreCategory(id),
+        (current) => withRestoredCategory(current, id),
       );
     },
     [commit, repository],
@@ -328,12 +358,25 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const updateRecurring = useCallback(
     async (id: string, patch: RecurringPatch) => {
+      const current = requireState();
+      const rule = current.recurring.find((r) => r.id === id);
+      if (!rule) throw new Error("Récurrence introuvable.");
+      // Date, fréquence et reprise après une pause rendues cohérentes avant l'enregistrement.
+      const resolved = resolveRecurringPatch(rule, patch, current.today);
+      const next = { ...rule, ...resolved };
+      // Une règle en pause peut rester incomplète (ancienne épargne sans destination) ; active, elle doit être valide.
+      const problem = next.isActive ? accountsProblem(current.accounts, next, rule) : null;
+      if (problem) throw new RepositoryError(problem, "validation");
+      // Comme en base : pas de récurrence active sur un compte désactivé.
+      if (next.isActive && !ruleAccountsActive(next, current.accounts)) {
+        throw new RepositoryError("Un compte de cette récurrence est désactivé : réactive-le dans « Mes comptes » ou choisis-en un autre.", "validation");
+      }
       await commit(
-        () => repository.updateRecurring(id, patch),
-        (current) => withUpdatedRecurring(current, id, patch),
+        () => repository.updateRecurring(id, resolved),
+        (latest) => withUpdatedRecurring(latest, id, resolved),
       );
     },
-    [commit, repository],
+    [commit, repository, requireState],
   );
 
   const removeRecurring = useCallback(
@@ -354,6 +397,42 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       await commit(
         () => repository.updateProfile(next.id, { displayName: next.displayName, preferences: next.preferences }),
         (latest) => withProfile(latest, patch),
+      );
+    },
+    [commit, repository, requireState],
+  );
+
+  const updateAccount = useCallback(
+    async (id: AccountId, patch: AccountPatch) => {
+      const current = requireState();
+      if (patch.isActive === false && !canDeactivateAccount(current.accounts, id)) {
+        throw new RepositoryError("Garde au moins un compte actif hors épargne pour saisir tes opérations.", "validation");
+      }
+      const account = current.accounts.find((a) => a.id === id);
+      const updated = withUpdatedAccount(current, id, patch).accounts.find((a) => a.id === id);
+      if (!account || !updated) throw new Error("Compte introuvable.");
+      // Désactiver un compte met en pause ses récurrences actives : aucune opération ne sera plus créée dessus.
+      const toPause = patch.isActive === false && account.isActive ? activeRulesUsingAccount(current.recurring, id) : [];
+      await commit(
+        async () => {
+          for (const rule of toPause) await repository.updateRecurring(rule.id, { isActive: false });
+          await repository.updateAccount(updated);
+        },
+        (latest) => withUpdatedAccount(toPause.reduce((acc, rule) => withUpdatedRecurring(acc, rule.id, { isActive: false }), latest), id, patch),
+      );
+      return toPause.length;
+    },
+    [commit, repository, requireState],
+  );
+
+  const moveAccount = useCallback(
+    async (id: AccountId, toIndex: number) => {
+      const ids = requireState().accounts.map((a) => a.id);
+      const ordered = moveInOrder(ids, id, toIndex);
+      if (ordered.every((value, index) => value === ids[index])) return;
+      await commit(
+        () => repository.reorderAccounts(ordered),
+        (current) => withAccountOrder(current, ordered),
       );
     },
     [commit, repository, requireState],
@@ -383,6 +462,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       addCategory,
       updateCategory,
       archiveCategory,
+      restoreCategory,
       setCategoryBudget,
       setMonthTargets,
       addGoal,
@@ -391,6 +471,8 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       updateRecurring,
       removeRecurring,
       updateProfile,
+      updateAccount,
+      moveAccount,
       resetDemo,
     };
   }, [
@@ -407,6 +489,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     addCategory,
     updateCategory,
     archiveCategory,
+    restoreCategory,
     setCategoryBudget,
     setMonthTargets,
     addGoal,
@@ -415,6 +498,8 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     updateRecurring,
     removeRecurring,
     updateProfile,
+    updateAccount,
+    moveAccount,
     resetDemo,
   ]);
 

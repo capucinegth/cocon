@@ -1,8 +1,8 @@
 # Cocon × Supabase — mise en place et points à valider
 
-Les migrations de ce dossier **n'ont été appliquées à aucune base réelle**. Elles ont été testées
-uniquement sur des bases locales jetables (PostgreSQL 16 + Auth Supabase + PostgREST 12).
-Avant toute application, valider chaque point ci-dessous.
+Toutes les migrations sont d'abord testées sur des bases PostgreSQL locales jetables (vraies migrations,
+vraies politiques RLS). Avant toute application à une base réelle, valider chaque point ci-dessous.
+Projet existant déjà en service : voir **« Mettre à jour un projet existant »**.
 
 Projet cible : le projet Supabase **dédié à Cocon**. Son nom exact n'est pas écrit dans le dépôt :
 il est fourni au moment de la connexion (`--project` ou `SUPABASE_PROJECT_NAME`), et le script de
@@ -26,6 +26,7 @@ migration vérifie qu'il correspond bien à l'URL utilisée par l'application.
 | `20261005090100_cocon_new_user.sql` | À l'inscription : profil, 13 catégories, 3 comptes par défaut |
 | `20261005090200_cocon_rls.sql` | RLS sur toutes les tables, droits minimaux, retrait des droits par défaut |
 | `20261005090300_cocon_functions.sql` | Récurrences (`materialize_recurring_transactions`), budget du mois (`ensure_month_budget`) |
+| `20261012090000_cocon_transferts_epargne.sql` | V3 : épargne = transfert vers un compte d'épargne (`transfer_account_id`), aucune récurrence générée sur un compte désactivé |
 
 Trois possibilités :
 - **Script de Cocon (recommandé)** — vérifie tout avant d'écrire quoi que ce soit :
@@ -39,14 +40,40 @@ Trois possibilités :
   Il retrouve le projet par son nom exact (une seule correspondance, projet actif), vérifie que
   `NEXT_PUBLIC_SUPABASE_URL` désigne ce même projet, et s'arrête si le schéma public n'est pas vide,
   si des comptes utilisateurs existent déjà ou si un autre déclencheur est branché sur les inscriptions.
-  Les 4 migrations s'appliquent en une seule transaction (tout ou rien), puis la RLS et les droits
+  Les migrations s'appliquent en une seule transaction (tout ou rien), puis la RLS et les droits
   sont contrôlés. Nécessite `SUPABASE_ACCESS_TOKEN` (jeton personnel, défini dans les réglages de
   l'environnement et jamais dans un fichier, à révoquer après usage) et
   l'accès réseau à `api.supabase.com` ; derrière un proxy : `NODE_USE_ENV_PROXY=1`.
 - **Supabase CLI** : `supabase link --project-ref <ref>` puis `supabase db push`.
-- **SQL Editor** : exécuter les 4 fichiers dans l'ordre.
+- **SQL Editor** : exécuter les fichiers dans l'ordre.
 
-Aucune migration ne contient de `DROP`, `TRUNCATE` ou `DELETE`. Elles sont uniquement additives.
+Aucune migration n'exécute de `DROP`, `TRUNCATE` ou `DELETE` : elles sont uniquement additives
+(la dernière remplace la fonction de génération des récurrences par une version compatible).
+
+### Mettre à jour un projet existant (déjà en service)
+
+Le script ci-dessus ne sert qu'à un projet **vide**. Sur le projet de production, appliquer seulement
+les migrations **nouvelles**, une à une, dans le **SQL Editor**, AVANT de déployer le code qui en dépend :
+
+1. Coller le contenu du fichier de migration, l'exécuter (une seule exécution : tout ou rien).
+2. Vérifier avec les requêtes de contrôle en lecture seule données en tête de la PR / du rapport.
+3. Seulement ensuite, fusionner dans `main` (Vercel redéploie la production).
+
+`20261012090000_cocon_transferts_epargne.sql` : deux colonnes facultatives (NULL par défaut),
+contraintes et index qui ne portent que sur elles, un contrôle du sens des transferts et la fonction
+de génération mise à jour. Aucune ligne existante n'est modifiée ; les anciennes épargnes restent
+valides (« compte de destination non précisé »).
+
+Retour arrière, seulement si nécessaire (les données antérieures à la migration sont conservées ;
+seuls les comptes de destination saisis depuis seraient perdus) :
+```sql
+drop trigger transactions_check_transfer on public.transactions;
+drop trigger recurring_transactions_check_transfer on public.recurring_transactions;
+drop function public.check_transfer_accounts();
+alter table public.transactions drop column transfer_account_id;
+alter table public.recurring_transactions drop column transfer_account_id;
+-- puis ré-exécuter la définition de materialize_recurring_transactions de 20261005090300_cocon_functions.sql
+```
 
 > Ne jamais appliquer `supabase/tests/support/local-auth-shim.sql` : il ne sert qu'aux tests locaux.
 
