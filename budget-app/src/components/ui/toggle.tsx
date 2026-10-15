@@ -17,7 +17,8 @@ export function Toggle({ checked, onChange, label }: ToggleProps) {
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-7 w-12 shrink-0 rounded-full transition-colors duration-300",
+        // Zone tactile élargie à 44 px (pseudo-élément), sans changer l'apparence de l'interrupteur.
+        "relative h-7 w-12 shrink-0 rounded-full transition-colors duration-300 before:absolute before:-inset-x-1 before:-inset-y-2 before:content-['']",
         checked ? "bg-blush-300" : "bg-ink/12",
       )}
     >

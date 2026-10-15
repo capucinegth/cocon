@@ -3,7 +3,7 @@
  * « Mes comptes », note d'une opération, récurrences, catégories, mois futurs et statistiques par mois.
  */
 import { expect, test } from "@playwright/test";
-import { clean, expectNoA11yViolations, fillOperation, navigate, openAdd, sheet } from "../support";
+import { clean, expectNoA11yViolations, fillOperation, navigate, openAdd, openMoreOptions, sheet } from "../support";
 
 test.describe("Paramètres", () => {
   test("plus aucune fonctionnalité promise mais indisponible", async ({ page }) => {
@@ -12,7 +12,7 @@ test.describe("Paramètres", () => {
     for (const text of ["prochaine version", "Bientôt", "Langue", "Devise", "Thème sombre", "Apparence", "Connexion bancaire", "Code de verrouillage", "Face ID", "Notifications"]) {
       expect(main).not.toContain(text);
     }
-    for (const text of ["Mes comptes", "Solde total hors épargne", "Exporter mes données", "Mode discret"]) {
+    for (const text of ["Mes comptes", "Sur tes comptes", "Tout ton argent", "Exporter mes données", "Mode discret"]) {
       expect(main).toContain(text);
     }
   });
@@ -41,6 +41,7 @@ test.describe("Mes comptes", () => {
 
     await navigate(page, "/");
     await openAdd(page);
+    await openMoreOptions(page);
     // V3 : un compte d'épargne ne se mouvemente que par transfert ; un compte désactivé n'est plus proposé.
     await expect(sheet(page).getByRole("button", { name: /Compte courant/ })).toBeVisible();
     await expect(sheet(page).getByRole("button", { name: /Livret A/ })).toHaveCount(0);
@@ -69,7 +70,7 @@ test.describe("Épargne : transfert entre comptes", () => {
 
   test("verser 100 € du compte courant vers le Livret A : soldes déplacés, patrimoine inchangé, disponible déduit une fois", async ({ page }) => {
     await page.goto("/parametres");
-    const patrimoine = page.getByRole("listitem").filter({ hasText: "Patrimoine total" });
+    const patrimoine = page.getByRole("listitem").filter({ hasText: "Tout ton argent" });
     const before = clean(await patrimoine.innerText());
     await expect(row(page, "Livret A")).toContainText("650,00");
     await expect(row(page, "Compte courant")).toContainText("2 090,29");
@@ -78,6 +79,7 @@ test.describe("Épargne : transfert entre comptes", () => {
     await openAdd(page);
     await sheet(page).getByRole("radio", { name: "Épargne" }).click();
     await sheet(page).getByLabel("Montant en euros").fill("100");
+    await openMoreOptions(page);
     await sheet(page).getByLabel(/Note/).fill("Transfert de test");
     await sheet(page).getByRole("button", { name: /^Ajouter −100/ }).click();
     await expect(page.getByText(/Épargne ajoutée/)).toBeVisible();
@@ -147,12 +149,12 @@ test.describe("Opérations et récurrences", () => {
     await expect(page.getByRole("button", { name: /Netflix/ })).toContainText("Chaque semaine · prochaine le 22 sept.");
   });
 
-  test("une opération prévue le mois prochain est consultable dans Transactions", async ({ page }) => {
+  test("une opération prévue le mois prochain est consultable dans Dépenses et revenus", async ({ page }) => {
     await page.goto("/transactions");
     await openAdd(page);
     await fillOperation(page, { amount: "120", label: "Billet de train", category: /Transport/, date: "2026-10-18" });
     await sheet(page).getByRole("button", { name: /^Ajouter −120/ }).click();
-    await page.getByLabel("Mois").selectOption("2026-10");
+    await page.getByLabel("Mois", { exact: true }).selectOption("2026-10");
     await expect(page.getByRole("button", { name: /Billet de train.*Prévu le 18 oct/ })).toBeVisible();
   });
 });
@@ -185,6 +187,6 @@ test.describe("Statistiques", () => {
     await expect(page.locator("main header")).toContainText("Août 2026");
     await expect(page.locator("main")).toContainText("dépensés en août");
     await page.getByRole("radio", { name: "Solde" }).click();
-    await expect(page.locator("main")).toContainText("Solde total hors épargne");
+    await expect(page.locator("main")).toContainText("Sur tes comptes");
   });
 });

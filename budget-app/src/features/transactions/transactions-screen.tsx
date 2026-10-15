@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowDownLeft, ArrowUpRight, CalendarDays, Plus, Search, Tag, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronDown, Plus, Search, Sprout, Tag, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TransactionRow } from "@/components/finance/transaction-row";
+import { CalendarCard } from "./calendar-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -55,8 +56,10 @@ export function TransactionsScreen() {
     else if (u.recurrenceId) openRecurring(u.recurrenceId);
   };
 
+  // Reçu / dépensé du mois ; l'épargne (transfert vers un compte d'épargne) est montrée à part, pas comme une dépense.
   const incoming = total(ofMonth.filter((t) => t.kind === "income").map((t) => t.amount));
-  const outgoing = total(ofMonth.filter((t) => t.kind !== "income").map((t) => t.amount));
+  const spent = total(ofMonth.filter((t) => t.kind === "expense").map((t) => t.amount));
+  const savedThisMonth = total(ofMonth.filter((t) => t.kind === "saving").map((t) => t.amount));
   const filtersActive = kind !== "all" || categoryId !== "all" || q.length > 0;
   const usedCategoryIds = new Set([...ofMonth.map((t) => t.categoryId), ...data.upcoming.map((u) => u.categoryId)]);
   const categoryOptions = [
@@ -75,7 +78,7 @@ export function TransactionsScreen() {
   return (
     <>
       <PageHeader
-        title="Transactions"
+        title="Dépenses et revenus"
         subtitle={formatMonth(month)}
         actions={
           <div className="hidden lg:block">
@@ -92,7 +95,7 @@ export function TransactionsScreen() {
           {/* Recherche + filtres */}
           <div className="flex animate-rise flex-col gap-3">
             <label className="relative block">
-              <span className="sr-only">Rechercher une transaction</span>
+              <span className="sr-only">Rechercher une dépense ou un revenu</span>
               <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
               <input
                 type="search"
@@ -117,15 +120,22 @@ export function TransactionsScreen() {
           </div>
 
           {/* Résumé compact (mobile et tablette) */}
-          <div className="grid animate-rise grid-cols-2 gap-3 xl:hidden">
-            <div className="rounded-3xl bg-sage-50 px-4 py-3">
-              <p className="text-[13px] font-medium text-ink-soft">Entrées</p>
-              <Money value={incoming} sign="always" className="text-lg font-semibold" />
+          <div className="animate-rise xl:hidden">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-3xl bg-sage-50 px-4 py-3">
+                <p className="text-[13px] font-medium text-ink-soft">Reçu</p>
+                <Money value={incoming} sign="always" className="text-lg font-semibold" />
+              </div>
+              <div className="rounded-3xl bg-peach-50 px-4 py-3">
+                <p className="text-[13px] font-medium text-ink-soft">Dépensé</p>
+                <Money value={-spent} className="text-lg font-semibold" />
+              </div>
             </div>
-            <div className="rounded-3xl bg-peach-50 px-4 py-3">
-              <p className="text-[13px] font-medium text-ink-soft">Sorties</p>
-              <Money value={-outgoing} className="text-lg font-semibold" />
-            </div>
+            {savedThisMonth > 0 && (
+              <p className="mt-2 px-1 text-[13px] text-muted">
+                Et <Money value={savedThisMonth} /> mis de côté sur ton épargne.
+              </p>
+            )}
           </div>
 
           <div className="flex min-h-9 items-center justify-between gap-3 px-1 text-sm text-muted" aria-live="polite">
@@ -209,20 +219,32 @@ export function TransactionsScreen() {
           {groups.length === 0 && upcoming.length === 0 && (
             <Card>
               {filtersActive ? (
-                <EmptyState emoji="🔍" title="Aucune transaction trouvée">
+                <EmptyState emoji="🔍" title="Rien trouvé">
                   Essaie un autre mot, un autre mois ou une autre catégorie.
                 </EmptyState>
               ) : (
-                <EmptyState emoji="🧾" title="Aucune opération ce mois-ci">
+                <EmptyState emoji="🧾" title="Rien ce mois-ci">
                   <span className="block">Ajoute ta première dépense ou ton premier revenu : tout se met à jour automatiquement.</span>
                   <Button variant="soft" size="sm" onClick={() => openAdd()} className="mt-4">
                     <Plus size={16} strokeWidth={2.4} aria-hidden />
-                    Ajouter une opération
+                    Ajouter une dépense ou un revenu
                   </Button>
                 </EmptyState>
               )}
             </Card>
           )}
+          <details className="group animate-rise xl:hidden">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-full bg-surface px-5 text-[15px] font-semibold shadow-card ring-1 ring-ink/5 [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <CalendarDays size={18} className="text-muted" aria-hidden />
+                Voir le mois en calendrier
+              </span>
+              <ChevronDown size={18} className="text-muted transition-transform group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="mt-3">
+              <CalendarCard key={month} month={month} />
+            </div>
+          </details>
         </div>
 
         {/* Résumé latéral (desktop) */}
@@ -235,7 +257,7 @@ export function TransactionsScreen() {
                   <span className="grid size-10 place-items-center rounded-2xl bg-sage-50">
                   <ArrowDownLeft size={18} className="text-sage-700" aria-hidden />
                 </span>
-                  Entrées
+                  Reçu
                 </dt>
                 <dd>
                   <Money value={incoming} sign="always" className="tabular font-semibold" />
@@ -246,17 +268,31 @@ export function TransactionsScreen() {
                   <span className="grid size-10 place-items-center rounded-2xl bg-peach-50">
                   <ArrowUpRight size={18} className="text-peach-700" aria-hidden />
                 </span>
-                  Sorties
+                  Dépensé
                 </dt>
                 <dd>
-                  <Money value={-outgoing} className="tabular font-semibold" />
+                  <Money value={-spent} className="tabular font-semibold" />
                 </dd>
               </div>
+              {savedThisMonth > 0 && (
+                <div className="flex items-center gap-3">
+                  <dt className="flex flex-1 items-center gap-3 text-[15px] text-muted">
+                    <span className="grid size-10 place-items-center rounded-2xl bg-lilac-50">
+                      <Sprout size={18} className="text-lilac-700" aria-hidden />
+                    </span>
+                    Mis de côté
+                  </dt>
+                  <dd>
+                    <Money value={savedThisMonth} className="tabular font-semibold" />
+                  </dd>
+                </div>
+              )}
             </dl>
             <p className="mt-5 rounded-2xl bg-canvas px-4 py-3 text-[13px] leading-relaxed text-muted">
-              {ofMonth.length} opérations ce mois-ci. Les sorties incluent ton épargne. Touche une ligne pour voir le détail.
+              Touche une ligne pour voir le détail ou la modifier.
             </p>
           </Card>
+          <CalendarCard key={month} month={month} />
         </aside>
       </div>
     </>

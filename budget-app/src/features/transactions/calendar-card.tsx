@@ -9,7 +9,7 @@ import { formatLongDate, monthKey } from "@/lib/dates";
 import { getCalendarEvents } from "@/lib/timeline";
 import { useBudget } from "@/store/budget-store";
 
-/** Le mois en un coup d'œil : revenus, charges fixes, grosses dépenses, épargne. */
+/** Calendrier du mois (dans « Dépenses et revenus ») : revenus, charges fixes, grosses dépenses, épargne. */
 export function CalendarCard({ month }: { month: string }) {
   const data = useBudget();
   const events = getCalendarEvents(data, month);
@@ -19,7 +19,7 @@ export function CalendarCard({ month }: { month: string }) {
 
   return (
     <Card>
-      <SectionHeader title="Ton mois en un coup d'œil" subtitle="Les mouvements qui comptent" />
+      <SectionHeader title="Calendrier du mois" subtitle="Revenus, charges fixes, grosses dépenses et épargne" />
       <MonthCalendar month={month} today={data.today} events={events} selectedDate={selected} onSelect={setSelected} />
       <CalendarLegend className="mt-4" />
 

@@ -3,7 +3,7 @@
  * Une charge dont le prélèvement de ce mois est déjà passé n'est pas déduite du disponible.
  */
 import { expect, test } from "@playwright/test";
-import { expectNoA11yViolations, heroAmount, navigate, openAdd, sheet } from "../support";
+import { expectNoA11yViolations, heroAmount, navigate, openAdd, openMoreOptions, sheet } from "../support";
 
 test.describe("Créer un compte", () => {
   test("un compte courant : listé avec son solde, proposé pour les opérations", async ({ page }) => {
@@ -20,6 +20,7 @@ test.describe("Créer un compte", () => {
 
     await navigate(page, "/");
     await openAdd(page);
+    await openMoreOptions(page);
     await expect(sheet(page).getByRole("button", { name: /Boursorama/ })).toBeVisible();
   });
 
@@ -34,6 +35,7 @@ test.describe("Créer un compte", () => {
 
     await navigate(page, "/");
     await openAdd(page);
+    await openMoreOptions(page);
     await expect(sheet(page).getByRole("button", { name: /LDDS/ })).toHaveCount(0);
     await sheet(page).getByRole("radio", { name: "Épargne" }).click();
     await expect(sheet(page).getByRole("button", { name: /LDDS/ })).toBeVisible();

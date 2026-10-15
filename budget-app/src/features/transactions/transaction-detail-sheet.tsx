@@ -17,7 +17,7 @@ import { useUI } from "@/store/ui-store";
 import type { Transaction } from "@/types/finance";
 
 const kindLabels: Record<Transaction["kind"], string> = { expense: "Dépense", income: "Revenu", saving: "Épargne" };
-const recurrenceLabels = { none: "Une fois", weekly: "Chaque semaine", monthly: "Chaque mois" };
+const recurrenceLabels = { none: "Non", weekly: "Chaque semaine", monthly: "Chaque mois" };
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -76,7 +76,7 @@ function TransactionDetail({ transaction: opened }: { transaction: Transaction }
         ) : (
           <Row label="Compte">{findAccount(accounts, transaction.accountId).label}</Row>
         )}
-        <Row label="Récurrence">
+        <Row label="Se répète">
           {recurrenceLabels[rule?.frequency ?? transaction.recurrence ?? "none"]}
           {rule && !rule.isActive && <span className="text-muted"> · en pause</span>}
         </Row>

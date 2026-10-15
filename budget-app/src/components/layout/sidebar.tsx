@@ -77,14 +77,13 @@ export function Sidebar() {
         {status === "ready" && (
           <Link href="/" className="lift rounded-3xl bg-blush-50 p-4">
             <p className="text-[13px] font-medium text-ink-soft">
-              Disponible aujourd&apos;hui
+              Tu peux encore dépenser
             </p>
             <p className="mt-0.5 text-xl font-semibold tracking-tight">
-              <Money value={summary.perDay} cents="always" />
+              <Money value={summary.remaining} cents="always" />
             </p>
             <p className="mt-0.5 text-[13px] text-ink-soft">
-              <Money value={summary.remaining} cents="always" /> pour{" "}
-              {summary.daysLeft} jours
+              ≈ <Money value={summary.perDay} cents="always" /> / jour
             </p>
           </Link>
         )}

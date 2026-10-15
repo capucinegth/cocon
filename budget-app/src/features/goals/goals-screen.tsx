@@ -5,15 +5,20 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { total } from "@/lib/budget";
+import { getMoneyOverview } from "@/lib/treasury";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import { GoalCard } from "./goal-card";
 
 export function GoalsScreen() {
-  const { goals, summary, today } = useBudget();
+  const { goals, summary, today, accounts, allTransactions } = useBudget();
   const { openGoalSheet, openAdd } = useUI();
   const totalSaved = total(goals.map((goal) => goal.saved));
   const totalTarget = total(goals.map((goal) => goal.target));
+  // Les objectifs suivent leurs versements (et leur montant de départ), pas le solde des comptes d'épargne :
+  // on l'explique quand les deux chiffres diffèrent, sans rien recalculer.
+  const savingsOnAccounts = getMoneyOverview(accounts, allTransactions, today).savings;
+  const showSavingsNote = goals.length > 0 && Math.abs(totalSaved - savingsOnAccounts) >= 1;
 
   return (
     <>
@@ -34,7 +39,7 @@ export function GoalsScreen() {
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-lilac-300/40 blur-3xl" />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-base font-semibold text-ink-soft">Épargne totale</p>
+            <p className="text-base font-semibold text-ink-soft">Mis de côté pour tes objectifs</p>
             <p className="mt-1 text-[48px] font-semibold leading-none tracking-tight sm:text-[56px]">
               <Money value={totalSaved} />
             </p>
@@ -53,6 +58,12 @@ export function GoalsScreen() {
             <Money value={summary.saved} sign="always" /> ce mois-ci
           </span>
         </div>
+        {showSavingsNote && (
+          <p className="relative mt-5 rounded-2xl bg-surface/70 px-4 py-3 text-[13px] leading-snug text-ink-soft">
+            Ce total suit les montants de départ et les versements de tes objectifs. Il peut différer de l&apos;épargne sur tes comptes (
+            <Money value={savingsOnAccounts} />, dans « Mon argent ») : rien n&apos;est recalculé ni déplacé.
+          </p>
+        )}
       </section>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3">

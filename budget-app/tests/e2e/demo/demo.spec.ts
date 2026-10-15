@@ -7,17 +7,21 @@ import { expect, test } from "@playwright/test";
 import { clean, fillOperation, heroAmount, navigate, openAdd, sheet } from "../support";
 
 test.describe("Accueil", () => {
-  test("chiffres de septembre et navigation vers août", async ({ page }) => {
+  test("chiffres de septembre ; le calcul et le bilan d'août sont dans Budget", async ({ page }) => {
     await page.goto("/");
     await expect.poll(() => heroAmount(page)).toBe("643,20 €");
     const main = clean(await page.locator("main").innerText());
-    for (const text of ["≈ 35,73 € / jour", "18 prochains jours", "Confortable", "Disponible réel 643,20 €", "Loyer", "Courses prévues"]) {
+    for (const text of ["Tu peux encore dépenser", "≈ 35,73 € / jour", "18 prochains jours", "Confortable", "Loyer", "Électricité"]) {
       expect(main).toContain(text);
     }
+    // L'accueil montre toujours le mois en cours : plus de sélecteur de mois.
+    await expect(page.getByRole("button", { name: "Mois précédent" })).toHaveCount(0);
+    await page.getByRole("link", { name: /Voir le calcul/ }).click();
+    await page.waitForURL((url) => url.pathname === "/budget");
+    await expect(page.locator("#calcul")).toContainText("Tu peux encore dépenser");
+    expect(clean(await page.locator("#calcul").innerText())).toContain("Tu peux encore dépenser 643,20 €");
     await page.getByRole("button", { name: "Mois précédent" }).click();
-    await expect.poll(() => heroAmount(page)).toBe("96,00 €");
-    await page.getByRole("button", { name: "Mois suivant" }).click();
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    expect(clean(await page.locator("#calcul").innerText())).toContain("Resté en fin de mois 96,00 €");
   });
 
   test("le mode démo est clairement signalé et la connexion explique pourquoi elle est indisponible", async ({ page }) => {
@@ -91,9 +95,9 @@ test.describe("Opérations", () => {
     await page.getByRole("radio", { name: "Revenus" }).click();
     await expect(page.getByText("1 opération", { exact: true })).toBeVisible();
     await page.getByRole("radio", { name: "Tout" }).click();
-    await page.getByLabel("Mois").selectOption("2026-08");
+    await page.getByLabel("Mois", { exact: true }).selectOption("2026-08");
     await expect(page.getByText("33 opérations", { exact: true })).toBeVisible();
-    await page.getByRole("searchbox", { name: "Rechercher une transaction" }).fill("carrefour");
+    await page.getByRole("searchbox", { name: "Rechercher une dépense ou un revenu" }).fill("carrefour");
     await expect(page.getByText("3 opérations", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Effacer les filtres" }).click();
     await expect(page.getByText("33 opérations", { exact: true })).toBeVisible();

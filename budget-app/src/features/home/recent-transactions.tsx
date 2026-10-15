@@ -7,23 +7,23 @@ import { buttonStyles } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SectionHeader } from "@/components/ui/section-header";
-import { monthTransactions, signedAmount, sortByDateDesc } from "@/lib/budget";
+import { signedAmount, sortByDateDesc } from "@/lib/budget";
 import { formatDayHeading } from "@/lib/dates";
 import { useBudget, useCategoryLookup } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 
-/** Les dernières opérations du mois, et un accès à la liste complète. */
-export function RecentTransactions({ month, limit = 5 }: { month: string; limit?: number }) {
+/** Les dernières dépenses (passées), et un accès à toutes les dépenses et revenus. */
+export function RecentTransactions({ limit = 3 }: { limit?: number }) {
   const data = useBudget();
   const categoryOf = useCategoryLookup();
   const { openTransaction, highlightId } = useUI();
-  const items = sortByDateDesc(monthTransactions(data, month)).slice(0, limit);
+  const items = sortByDateDesc(data.transactions.filter((t) => t.kind === "expense")).slice(0, limit);
 
   return (
     <Card>
-      <SectionHeader title="Transactions récentes" subtitle="Touche une opération pour le détail" />
+      <SectionHeader title="Dernières dépenses" />
       {items.length === 0 ? (
-        <EmptyState emoji="🧾" title="Aucune opération" className="py-4">
+        <EmptyState emoji="🧾" title="Aucune dépense pour l'instant" className="py-4">
           Ajoute ta première dépense avec le bouton « Ajouter ».
         </EmptyState>
       ) : (
@@ -46,7 +46,7 @@ export function RecentTransactions({ month, limit = 5 }: { month: string; limit?
         </ul>
       )}
       <Link href="/transactions" className={buttonStyles({ variant: "soft", size: "md" }) + " mt-4 w-full"}>
-        Voir toutes les transactions
+        Toutes tes dépenses et revenus
         <ArrowRight size={17} aria-hidden />
       </Link>
     </Card>

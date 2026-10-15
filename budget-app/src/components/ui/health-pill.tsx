@@ -5,13 +5,13 @@ import type { BudgetHealth } from "@/lib/budget";
 const styles: Record<BudgetHealth, { label: string; hint: string; icon: LucideIcon; className: string }> = {
   comfortable: {
     label: "Confortable",
-    hint: "Tu peux dépenser un peu plus que ton rythme prévu.",
+    hint: "Ton budget est confortable pour finir le mois.",
     icon: Leaf,
     className: "bg-sage-50 text-sage-700",
   },
   attention: {
     label: "Attention",
-    hint: "Ton disponible par jour passe sous ton rythme prévu.",
+    hint: "Ce que tu peux dépenser par jour passe sous ton rythme prévu : ralentis un peu.",
     icon: Feather,
     className: "bg-peach-50 text-peach-700",
   },
