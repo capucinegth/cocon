@@ -1,6 +1,6 @@
 "use client";
 
-import { Repeat } from "lucide-react";
+import { Plus, Repeat } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { Money } from "@/components/ui/money";
@@ -17,16 +17,29 @@ const frequencyLabel: Record<RecurringRule["frequency"], string> = { weekly: "Ch
 export function RecurringCard() {
   const { recurring } = useBudget();
   const categoryOf = useCategoryLookup();
-  const { openRecurring } = useUI();
+  const { openRecurring, openFixedCharge } = useUI();
   const rules = [...recurring].sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.nextOccurrence.localeCompare(b.nextOccurrence));
 
   return (
     <Card>
-      <SectionHeader title="Opérations récurrentes" subtitle="Ajoutées automatiquement à chaque échéance" />
+      <SectionHeader
+        title="Opérations récurrentes"
+        subtitle="Ajoutées automatiquement à chaque échéance"
+        aside={
+          <button
+            type="button"
+            onClick={openFixedCharge}
+            className="-mr-2 inline-flex h-10 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-semibold text-blush-700 transition-colors hover:bg-blush-50"
+          >
+            <Plus size={16} aria-hidden />
+            Charge fixe
+          </button>
+        }
+      />
       {rules.length === 0 ? (
         <p className="flex items-start gap-3 rounded-2xl bg-canvas px-4 py-3 text-[13px] text-muted">
           <Repeat size={16} className="mt-0.5 shrink-0" aria-hidden />
-          Aucune pour l&apos;instant. En ajoutant une opération, choisis « Chaque mois » pour ton loyer, ton salaire ou un abonnement.
+          Aucune pour l&apos;instant. Ajoute une charge fixe (loyer, abonnement…) avec son jour de prélèvement, ou choisis « Chaque mois » en ajoutant une opération.
         </p>
       ) : (
         <ul className="-mx-3 -my-1">

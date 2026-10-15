@@ -9,12 +9,14 @@ import { Money } from "@/components/ui/money";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
 import { Toggle } from "@/components/ui/toggle";
-import { isLiquidAccount } from "@/config/accounts";
+import { ChoiceChip } from "@/components/ui/choice-chip";
+import { accountTypeEmoji, isLiquidAccount } from "@/config/accounts";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { accountBalance, accountTypeLabel, activeRulesUsingAccount, canDeactivateAccount } from "@/lib/accounts";
 import { parseAmountInput, roundCents } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
+import type { AccountType } from "@/types/finance";
 
 type Sign = "positive" | "negative";
 
@@ -157,14 +159,92 @@ function AccountForm({ accountId }: { accountId: string }) {
   );
 }
 
-/** Un compte : nom, solde de départ, actif / désactivé, ordre d'affichage. */
+const typeChoices: AccountType[] = ["checking", "savings", "cash", "joint", "other"];
+
+/** Nouveau compte : nom, type, solde de départ. Il est ajouté à la fin de la liste, actif. */
+function NewAccountForm() {
+  const { addAccount, accounts } = useBudget();
+  const { closeSheet, showToast } = useUI();
+  const [label, setLabel] = useState("");
+  const [type, setType] = useState<AccountType>("checking");
+  const [balanceText, setBalanceText] = useState("");
+  const [sign, setSign] = useState<Sign>("positive");
+  const { pending, error, run } = useAsyncAction();
+
+  const liquid = type !== "savings";
+  const initialBalance = roundCents(parseAmountInput(balanceText) * (liquid && sign === "negative" ? -1 : 1));
+  const duplicate = accounts.some((a) => a.label.trim().toLocaleLowerCase("fr") === label.trim().toLocaleLowerCase("fr"));
+  const canSubmit = label.trim().length > 0 && !duplicate && !pending;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    const ok = await run(async () => {
+      await addAccount({ label, type, initialBalance });
+    });
+    if (!ok) return;
+    closeSheet();
+    showToast(`Compte « ${label.trim()} » créé`);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col">
+      <div className="flex flex-col gap-6 px-6 pb-6 pt-2">
+        <label className="block">
+          <span className="mb-2.5 block text-sm font-semibold text-muted">Nom</span>
+          <TextInput data-autofocus value={label} onChange={(event) => setLabel(event.target.value)} maxLength={60} placeholder="Ex. Compte Boursorama, LDDS…" />
+        </label>
+        <FormField label="Type de compte">
+          <div className="flex flex-wrap gap-2">
+            {typeChoices.map((choice) => (
+              <ChoiceChip key={choice} selected={choice === type} onClick={() => setType(choice)}>
+                <span aria-hidden>{accountTypeEmoji[choice]}</span>
+                {accountTypeLabel[choice]}
+              </ChoiceChip>
+            ))}
+          </div>
+          <p className="mt-2 text-[13px] text-muted">
+            {liquid
+              ? "Proposé pour tes revenus et dépenses, et comme source de ton épargne."
+              : "Un compte d'épargne reçoit tes versements d'épargne (transferts depuis tes autres comptes)."}
+          </p>
+        </FormField>
+        <FormField label="Solde de départ" as="div">
+          <AmountInput label="Solde de départ en euros" value={balanceText} onChange={setBalanceText} size="md" prefix={liquid && sign === "negative" ? "−" : undefined} />
+          {liquid && (
+            <SegmentedControl
+              label="Signe du solde de départ"
+              value={sign}
+              onChange={setSign}
+              options={[
+                { value: "positive", label: "Positif" },
+                { value: "negative", label: "Négatif (découvert)" },
+              ]}
+              size="sm"
+              className="mt-3 w-full"
+            />
+          )}
+          <p className="mt-2 text-[13px] text-muted">Ce qu&apos;il y a sur ce compte aujourd&apos;hui. Les opérations saisies ensuite s&apos;y ajoutent.</p>
+        </FormField>
+      </div>
+      <div className="sticky bottom-0 bg-surface/95 px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 backdrop-blur">
+        <FormError message={error} className="mb-3" />
+        <Button type="submit" size="lg" disabled={!canSubmit} className="w-full" aria-busy={pending || undefined}>
+          {pending ? "Création…" : duplicate ? "Un compte porte déjà ce nom" : label.trim() ? "Créer le compte" : "Donne-lui un nom"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Un compte : création, ou modification (nom, solde de départ, actif / désactivé, ordre d'affichage). */
 export function AccountSheet() {
   const { sheet, isSheetOpen, sheetSession, closeSheet } = useUI();
   const active = sheet?.type === "account" ? sheet : null;
 
   return (
-    <Sheet open={isSheetOpen && active !== null} onClose={closeSheet} title="Modifier le compte">
-      {active && <AccountForm key={sheetSession} accountId={active.accountId} />}
+    <Sheet open={isSheetOpen && active !== null} onClose={closeSheet} title={active && !active.accountId ? "Nouveau compte" : "Modifier le compte"}>
+      {active && (active.accountId ? <AccountForm key={sheetSession} accountId={active.accountId} /> : <NewAccountForm key={sheetSession} />)}
     </Sheet>
   );
 }

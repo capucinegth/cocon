@@ -18,9 +18,10 @@ export type SheetState =
   | { type: "categoryEdit"; categoryId: string; month: string }
   | { type: "goal"; goalId?: string }
   | { type: "recurring"; ruleId: string }
+  | { type: "fixedCharge" }
   | { type: "targets"; month: string }
   | { type: "profile" }
-  | { type: "account"; accountId: string }
+  | { type: "account"; accountId?: string }
   | { type: "password"; recovery: boolean }
   | null;
 
@@ -47,9 +48,12 @@ interface UIContextValue {
   /** Sans identifiant : nouvel objectif ; avec : modification. */
   openGoalSheet: (goalId?: string) => void;
   openRecurring: (ruleId: string) => void;
+  /** Nouvelle charge fixe récurrente (montant + jour de prélèvement). */
+  openFixedCharge: () => void;
   openTargets: (month: string) => void;
   openProfile: () => void;
-  openAccount: (accountId: string) => void;
+  /** Sans identifiant : nouveau compte. */
+  openAccount: (accountId?: string) => void;
   /** `recovery` : après un lien « mot de passe oublié ». */
   openPassword: (recovery?: boolean) => void;
   closeSheet: () => void;
@@ -90,9 +94,10 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const openCategoryEdit = useCallback((categoryId: string, month: string) => open({ type: "categoryEdit", categoryId, month }), [open]);
   const openGoalSheet = useCallback((goalId?: string) => open({ type: "goal", goalId }), [open]);
   const openRecurring = useCallback((ruleId: string) => open({ type: "recurring", ruleId }), [open]);
+  const openFixedCharge = useCallback(() => open({ type: "fixedCharge" }), [open]);
   const openTargets = useCallback((month: string) => open({ type: "targets", month }), [open]);
   const openProfile = useCallback(() => open({ type: "profile" }), [open]);
-  const openAccount = useCallback((accountId: string) => open({ type: "account", accountId }), [open]);
+  const openAccount = useCallback((accountId?: string) => open({ type: "account", accountId }), [open]);
   const openPassword = useCallback((recovery = false) => open({ type: "password", recovery }), [open]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
@@ -152,6 +157,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openCategoryEdit,
       openGoalSheet,
       openRecurring,
+      openFixedCharge,
       openTargets,
       openProfile,
       openAccount,
@@ -176,6 +182,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openCategoryEdit,
       openGoalSheet,
       openRecurring,
+      openFixedCharge,
       openTargets,
       openProfile,
       openAccount,

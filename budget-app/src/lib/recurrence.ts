@@ -46,6 +46,17 @@ export function firstOccurrenceFrom(rule: Pick<RecurringRule, "nextOccurrence" |
   return date;
 }
 
+/**
+ * Premier prélèvement d'une charge mensuelle au jour `day` (1–31, plafonné au dernier jour du mois) :
+ * ce mois-ci si ce jour est encore à venir, sinon le mois suivant. Un prélèvement passé — ou tombant
+ * aujourd'hui — n'est jamais rattrapé : on le considère déjà dans le solde réel (pas de double déduction).
+ */
+export function firstMonthlyDebit(day: number, today: string): string {
+  const monthStart = `${today.slice(0, 8)}01`;
+  const thisMonth = `${today.slice(0, 8)}${String(Math.min(day, daysInMonth(monthStart))).padStart(2, "0")}`;
+  return thisMonth > today ? thisMonth : nextOccurrenceDate(thisMonth, "monthly", day);
+}
+
 /** Occurrences d'une règle entre `nextOccurrence` et `until` (inclus). */
 export function occurrencesUntil(rule: RecurringRule, until: string): string[] {
   const dates: string[] = [];

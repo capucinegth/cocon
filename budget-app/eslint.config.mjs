@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Moteur de lecture des tickets (Tesseract) copié depuis node_modules : fichiers tiers minifiés.
+    "public/ocr/**",
   ]),
 ]);
 

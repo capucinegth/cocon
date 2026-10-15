@@ -34,9 +34,13 @@ export interface BudgetRepository {
   updateGoal(goal: SavingsGoal): Promise<void>;
   deleteGoal(goalId: string): Promise<void>;
 
+  /** Nouvelle règle récurrente seule (charge fixe), sans opération associée. */
+  createRecurring(rule: RecurringRule): Promise<void>;
   updateRecurring(ruleId: string, patch: RecurringPatch): Promise<void>;
   deleteRecurring(ruleId: string): Promise<void>;
 
+  /** Nouveau compte, placé à la position donnée (sort_order). */
+  createAccount(account: Account, sortOrder: number): Promise<void>;
   /** Nom, solde de départ, actif / désactivé. Un compte n'est jamais supprimé (historique conservé). */
   updateAccount(account: Account): Promise<void>;
   /** Ordre d'affichage des comptes (identifiants dans le nouvel ordre). */
