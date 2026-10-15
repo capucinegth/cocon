@@ -160,6 +160,11 @@ export function accountToRow(account: Pick<Account, "label" | "initialBalance" |
   };
 }
 
+/** Création d'un compte : identifiant et type en plus (jamais `user_id`, donné par la base). */
+export function newAccountToRow(account: Account, sortOrder: number) {
+  return { id: account.id, type: account.type, sort_order: sortOrder, ...accountToRow(account) };
+}
+
 /* ------------------------------------------------------------------- Opérations */
 
 export function transactionFromRow(row: TransactionRow, rules: Map<string, RecurringRule>, categoryLabel: (id: string) => string): Transaction {

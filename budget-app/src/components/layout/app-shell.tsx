@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { AddCategorySheet } from "@/features/budget/add-category-sheet";
 import { CategoryEditSheet } from "@/features/budget/category-edit-sheet";
+import { FixedChargeSheet } from "@/features/budget/fixed-charge-sheet";
 import { RecurringSheet } from "@/features/budget/recurring-sheet";
 import { TargetsSheet } from "@/features/budget/targets-sheet";
 import { AddGoalSheet } from "@/features/goals/add-goal-sheet";
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <CategoryEditSheet />
           <TargetsSheet />
           <RecurringSheet />
+          <FixedChargeSheet />
           <AddGoalSheet />
           <ProfileSheet />
           <AccountSheet />

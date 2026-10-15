@@ -14,7 +14,7 @@ import { createDemoRepository, createDemoState } from "@/services/demo-repositor
 import { errorMessage, isSessionError, RepositoryError, type BudgetRepository } from "@/services/repository";
 import { createSupabaseRepository } from "@/services/supabase-repository";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
-import type { AccountId, Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
+import type { Account, AccountId, RecurringRule, Category, CategoryId, Preferences, SavingsGoal, Transaction } from "@/types/finance";
 import {
   accountsProblem,
   buildCategory,
@@ -39,8 +39,14 @@ import {
   withUpdatedCategory,
   withUpdatedGoal,
   withUpdatedRecurring,
+  buildAccount,
+  buildFixedCharge,
+  withRecurring,
+  withAccount,
   withAccountOrder,
   withUpdatedAccount,
+  type AccountInput,
+  type FixedChargeInput,
   type AccountPatch,
   type CategoryInput,
   type GoalInput,
@@ -81,9 +87,12 @@ interface BudgetContextValue extends BudgetData {
   addGoal: (input: NewGoalInput) => Promise<SavingsGoal>;
   updateGoal: (id: string, patch: Partial<GoalInput>) => Promise<void>;
   removeGoal: (id: string) => Promise<void>;
+  /** Charge fixe récurrente : règle seule, premier prélèvement à partir d'aujourd'hui. */
+  addFixedCharge: (input: FixedChargeInput) => Promise<RecurringRule>;
   updateRecurring: (id: string, patch: RecurringPatch) => Promise<void>;
   removeRecurring: (id: string) => Promise<void>;
   updateProfile: (patch: { displayName?: string; preferences?: Preferences }) => Promise<void>;
+  addAccount: (input: AccountInput) => Promise<Account>;
   /** Renvoie le nombre de récurrences mises en pause (compte désactivé). */
   updateAccount: (id: AccountId, patch: AccountPatch) => Promise<number>;
   /** Déplace un compte à une position (0 = en premier) dans l'ordre d'affichage. */
@@ -356,6 +365,23 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     [commit, repository],
   );
 
+  const addFixedCharge = useCallback(
+    async (input: FixedChargeInput) => {
+      const current = requireState();
+      const problem = accountsProblem(current.accounts, { kind: "expense", accountId: input.accountId });
+      if (problem) throw new RepositoryError(problem, "validation");
+      if (!input.label.trim()) throw new RepositoryError("Donne un nom à cette charge.", "validation");
+      if (!(input.amount > 0)) throw new RepositoryError("Indique le montant prélevé.", "validation");
+      const rule = buildFixedCharge(input, current.today, uuid);
+      await commit(
+        () => repository.createRecurring(rule),
+        (latest) => withRecurring(latest, rule),
+      );
+      return rule;
+    },
+    [commit, repository, requireState],
+  );
+
   const updateRecurring = useCallback(
     async (id: string, patch: RecurringPatch) => {
       const current = requireState();
@@ -398,6 +424,25 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         () => repository.updateProfile(next.id, { displayName: next.displayName, preferences: next.preferences }),
         (latest) => withProfile(latest, patch),
       );
+    },
+    [commit, repository, requireState],
+  );
+
+  const addAccount = useCallback(
+    async (input: AccountInput) => {
+      const current = requireState();
+      if (!input.label.trim()) throw new RepositoryError("Donne un nom au compte.", "validation");
+      if (current.accounts.some((a) => a.label.trim().toLocaleLowerCase("fr") === input.label.trim().toLocaleLowerCase("fr"))) {
+        throw new RepositoryError("Un compte porte déjà ce nom.", "validation");
+      }
+      const account = buildAccount(input, uuid);
+      // Positions espacées de 10, à la suite des comptes existants.
+      const sortOrder = (current.accounts.length + 1) * 10;
+      await commit(
+        () => repository.createAccount(account, sortOrder),
+        (latest) => withAccount(latest, account),
+      );
+      return account;
     },
     [commit, repository, requireState],
   );
@@ -468,9 +513,11 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       addGoal,
       updateGoal,
       removeGoal,
+      addFixedCharge,
       updateRecurring,
       removeRecurring,
       updateProfile,
+      addAccount,
       updateAccount,
       moveAccount,
       resetDemo,
@@ -495,9 +542,11 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     addGoal,
     updateGoal,
     removeGoal,
+    addFixedCharge,
     updateRecurring,
     removeRecurring,
     updateProfile,
+    addAccount,
     updateAccount,
     moveAccount,
     resetDemo,

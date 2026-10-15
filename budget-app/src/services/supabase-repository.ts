@@ -11,6 +11,7 @@ import type { RecurringRule } from "@/types/finance";
 import {
   accountFromRow,
   accountToRow,
+  newAccountToRow,
   categoryFromRow,
   categoryToRow,
   goalFromRow,
@@ -249,6 +250,10 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
       await must(client.from("savings_goals").delete().eq("id", goalId), "supprimer l'objectif");
     },
 
+    async createRecurring(rule) {
+      await must(client.from("recurring_transactions").insert(recurringToRow(rule)), "enregistrer la charge fixe");
+    },
+
     async updateRecurring(ruleId, patch) {
       const row: Record<string, unknown> = {};
       if (patch.label !== undefined) row.description = patch.label.trim();
@@ -269,6 +274,10 @@ export function createSupabaseRepository(client: SupabaseClient): BudgetReposito
 
     async deleteRecurring(ruleId) {
       await must(client.from("recurring_transactions").delete().eq("id", ruleId), "supprimer la récurrence");
+    },
+
+    async createAccount(account, sortOrder) {
+      await must(client.from("accounts").insert(newAccountToRow(account, sortOrder)), "créer le compte");
     },
 
     async updateAccount(account) {

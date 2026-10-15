@@ -18,6 +18,7 @@ import { useBudget } from "@/store/budget-store";
 import { accountChoices, destinationChoices, preferredAccountId, preferredDestinationId } from "@/lib/accounts";
 import { defaultAccountId, savingCategoryId } from "@/store/budget-state";
 import { useUI, type AddPreset } from "@/store/ui-store";
+import { ReceiptScanButton } from "./receipt-scan-button";
 import type { AccountId, CategoryId, Recurrence, Transaction, TransactionKind } from "@/types/finance";
 
 type DateChoice = "today" | "yesterday" | "other";
@@ -132,6 +133,22 @@ function AddTransactionForm({ preset }: { preset: AddPreset }) {
         />
 
         <AmountInput label="Montant en euros" value={amountText} onChange={setAmountText} prefix={kind === "income" ? "+" : "−"} autoFocus={!editing} />
+        {kind === "expense" && !editing && (
+          <ReceiptScanButton
+            today={today}
+            onRead={(reading) => {
+              if (reading.amount !== undefined) setAmountText(amountToInput(reading.amount));
+              if (reading.merchant && !label.trim()) setLabel(reading.merchant);
+              if (reading.date && reading.date !== today) {
+                if (reading.date === addDays(today, -1)) setDateChoice("yesterday");
+                else {
+                  setDateChoice("other");
+                  setOtherDate(reading.date);
+                }
+              }
+            }}
+          />
+        )}
 
         <label className="block">
           <span className="mb-2.5 block text-sm font-semibold text-muted">

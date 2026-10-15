@@ -36,10 +36,21 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
   recherche, opérations datées dans le futur (« À venir », y compris les mois suivants), récurrences
   hebdomadaires / mensuelles générées automatiquement à échéance — description, montant, fréquence,
   prochaine échéance, catégorie, compte modifiables ; pause et reprise sans rattrapage —, export CSV.
+- **Scan de ticket de caisse** : dans « Ajouter une dépense », « Scanner un ticket » ouvre l'appareil photo ;
+  le montant (TOTAL / NET À PAYER), le magasin et la date sont lus **sur l'appareil** (Tesseract,
+  fichiers servis par Cocon depuis `/ocr`, copiés depuis `node_modules` à chaque `dev` / `build`) :
+  la photo n'est envoyée nulle part ni enregistrée. Le formulaire est pré-rempli, à vérifier avant d'ajouter.
+- **Charges fixes** (Budget → Opérations récurrentes → « Charge fixe ») : nom, montant, jour du
+  prélèvement (1–31, « 31 » = dernier jour des mois plus courts), catégorie, compte. Aucune opération
+  n'est créée à l'enregistrement. Premier prélèvement : aujourd'hui si c'est le jour du prélèvement,
+  ce mois-ci s'il est encore à venir ; s'il est déjà passé, il est considéré comme déjà dans le solde réel
+  et n'est **pas** déduit, le premier prélèvement compté est le mois suivant. Ensuite, chaque prélèvement
+  est ajouté automatiquement à sa date.
 - **Budget par mois** : montant par catégorie, revenus et épargne prévus, reprise automatique
   du mois précédent, préparation du mois suivant, catégories de dépenses et de revenus personnalisées
   (archivage sans perte d'historique, restauration).
-- **Mes comptes** : nom, solde de départ, actif / désactivé (jamais supprimé ; ses récurrences
+- **Mes comptes** : création (compte courant, joint, espèces, épargne ou autre, avec son solde de départ ;
+  un compte d'épargne ne reçoit que des versements d'épargne), nom, solde de départ, actif / désactivé (jamais supprimé ; ses récurrences
   sont mises en pause), ordre d'affichage ; solde calculé par compte, solde total hors épargne
   et patrimoine total.
 - **Épargne = transfert** : un versement passe d'un compte hors épargne vers un compte d'épargne
@@ -69,7 +80,8 @@ UI (features/, components/)
              → PostgreSQL : tables + RLS + fonctions (supabase/migrations/)
 ```
 
-- Calculs centralisés et testés : `src/lib/budget.ts`, `accounts.ts`, `timeline.ts`, `recurrence.ts`, `goals.ts`.
+- Calculs centralisés et testés : `src/lib/budget.ts`, `accounts.ts`, `timeline.ts`, `recurrence.ts`, `goals.ts`,
+  `receipt.ts` (lecture du texte d'un ticket).
 - Dates en heure de Paris (`src/lib/paris-time.ts`), montants en centimes entiers en base.
 - Session : `@supabase/ssr` (cookies), rafraîchie et vérifiée par `src/proxy.ts`.
 - Une modification est enregistrée **puis** affichée : en cas d'échec, rien ne change à l'écran.

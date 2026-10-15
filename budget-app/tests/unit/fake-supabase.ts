@@ -12,6 +12,10 @@ export function fakeClient() {
           call.values = values;
           return query;
         },
+        insert(values: Record<string, unknown>) {
+          call.values = values;
+          return query;
+        },
         eq(column: string, value: unknown) {
           call.filters.push([column, value]);
           return query;

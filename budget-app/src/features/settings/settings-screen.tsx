@@ -220,6 +220,9 @@ export function SettingsScreen() {
                 </button>
               </li>
             ))}
+            <SettingsRow icon={Plus} label="Ajouter un compte" hint="Compte courant, épargne, espèces…" onClick={() => openAccount()}>
+              <ChevronRight size={18} className="text-muted" aria-hidden />
+            </SettingsRow>
             <li className="mt-1 flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
               <span className="min-w-0">
                 <span className="block text-[15px] font-semibold">Solde total hors épargne</span>

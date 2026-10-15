@@ -5,17 +5,18 @@
  * ce que les écritures en base produisent (pas de second calcul divergent).
  */
 import { findCategory } from "@/config/categories";
-import { isLiquidAccount } from "@/config/accounts";
+import { accountTypeEmoji, isLiquidAccount } from "@/config/accounts";
 import { accountMovement, preferredAccountId, savingsAccountIds } from "@/lib/accounts";
 import { planFor } from "@/lib/budget";
 import { addMonths, endOfMonth, monthKey } from "@/lib/dates";
 import { roundCents } from "@/lib/format";
-import { firstOccurrenceFrom, nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
+import { firstMonthlyDebit, firstOccurrenceFrom, nextOccurrenceDate, projectRecurring } from "@/lib/recurrence";
 import { slugify } from "@/lib/text";
 import type { BudgetData, BudgetState } from "@/types/budget-data";
 import type {
   Account,
   AccountId,
+  AccountType,
   BudgetPlan,
   Category,
   CategoryId,
@@ -368,6 +369,40 @@ export function withoutGoal(state: BudgetState, id: string): BudgetState {
   };
 }
 
+export interface FixedChargeInput {
+  label: string;
+  amount: number;
+  categoryId: CategoryId;
+  accountId: AccountId;
+  /** Jour du prélèvement (1–31 ; « 31 » = dernier jour des mois plus courts). */
+  day: number;
+}
+
+/**
+ * Charge fixe récurrente (loyer, abonnement…) : une règle mensuelle, sans opération créée aujourd'hui.
+ * Son premier prélèvement est le prochain jour prévu à partir d'aujourd'hui : un prélèvement de ce mois
+ * déjà passé n'est pas déduit du solde actuel (il y est déjà).
+ */
+export function buildFixedCharge(input: FixedChargeInput, today: string, makeId: () => string): RecurringRule {
+  const day = Math.min(Math.max(Math.round(input.day), 1), 31);
+  return {
+    id: makeId(),
+    label: input.label.trim(),
+    amount: roundCents(input.amount),
+    kind: "expense",
+    categoryId: input.categoryId,
+    accountId: input.accountId,
+    frequency: "monthly",
+    anchorDay: day,
+    nextOccurrence: firstMonthlyDebit(day, today),
+    isActive: true,
+  };
+}
+
+export function withRecurring(state: BudgetState, rule: RecurringRule): BudgetState {
+  return state.recurring.some((r) => r.id === rule.id) ? state : { ...state, recurring: [...state.recurring, rule] };
+}
+
 export type RecurringPatch = Partial<
   Pick<RecurringRule, "label" | "amount" | "isActive" | "nextOccurrence" | "frequency" | "anchorDay" | "categoryId" | "accountId" | "transferAccountId">
 >;
@@ -435,6 +470,35 @@ export function withUpdatedAccount(state: BudgetState, id: AccountId, patch: Acc
       ? Object.fromEntries(Object.entries(state.openingBalances).map(([month, value]) => [month, roundCents(value + delta)]))
       : state.openingBalances;
   return { ...state, accounts: state.accounts.map((a) => (a.id === id ? updated : a)), openingBalances };
+}
+
+export interface AccountInput {
+  label: string;
+  type: AccountType;
+  initialBalance: number;
+}
+
+/** Nouveau compte (toujours actif à sa création), placé à la fin de la liste. */
+export function buildAccount(input: AccountInput, makeId: () => string): Account {
+  return {
+    id: makeId(),
+    label: input.label.trim(),
+    emoji: accountTypeEmoji[input.type] ?? accountTypeEmoji.other,
+    type: input.type,
+    initialBalance: roundCents(input.initialBalance),
+    isActive: true,
+  };
+}
+
+export function withAccount(state: BudgetState, account: Account): BudgetState {
+  if (state.accounts.some((a) => a.id === account.id)) return state;
+  // Démo : les soldes d'ouverture figés incluent le solde de départ d'un nouveau compte hors épargne.
+  const shift = isLiquidAccount(account) ? account.initialBalance : 0;
+  const openingBalances =
+    state.openingBalances && shift !== 0
+      ? Object.fromEntries(Object.entries(state.openingBalances).map(([month, value]) => [month, roundCents(value + shift)]))
+      : state.openingBalances;
+  return { ...state, accounts: [...state.accounts, account], openingBalances };
 }
 
 /** Ordre d'affichage des comptes (identifiants dans le nouvel ordre ; les autres gardent leur place à la fin). */

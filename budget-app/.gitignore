@@ -48,3 +48,6 @@ next-env.d.ts
 
 # exemple de configuration (sans aucune valeur secrète) : commité
 !.env.example
+
+# OCR : copié depuis node_modules avant dev / build (scripts/copy-ocr-assets.mjs)
+/public/ocr/
