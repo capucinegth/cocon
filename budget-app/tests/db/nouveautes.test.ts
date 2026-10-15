@@ -78,6 +78,20 @@ suite("Base Cocon — créer un compte, ajouter une charge fixe", () => {
     expect(result.generatedOctober).toBe(1);
   });
 
+  it("charge fixe dont le jour est aujourd'hui : premier prélèvement généré aujourd'hui", async () => {
+    const today = "2026-09-13";
+    const result = await as(db, alice, async (q) => {
+      const courant = (await q("select id from public.accounts where name = 'Compte courant'")).rows[0].id as string;
+      const logement = (await q("select id from public.categories where name = 'Logement'")).rows[0].id as string;
+      const rule = buildFixedCharge({ label: "Loyer", amount: 650, categoryId: logement, accountId: courant, day: 13 }, today, randomUUID);
+      const r = insert("recurring_transactions", recurringToRow(rule));
+      await q(r.text, r.values);
+      await q("select public.materialize_recurring_transactions($1)", [today]);
+      return (await q("select transaction_date::text as date, amount_cents::int as cents from public.transactions where recurrence_id = $1", [rule.id])).rows;
+    });
+    expect(result).toEqual([{ date: "2026-09-13", cents: 65000 }]);
+  });
+
   it("impossible de rattacher une charge fixe au compte d'une autre utilisatrice", async () => {
     const bobAccount = await id("accounts", bob, "Compte courant");
     const aliceCategory = await id("categories", alice, "Logement");

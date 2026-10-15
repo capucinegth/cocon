@@ -66,14 +66,22 @@ describe("charges fixes : premier prélèvement", () => {
     expect(firstMonthlyDebit(5, "2026-09-13")).toBe("2026-10-05");
   });
 
-  it("jour du prélèvement = aujourd'hui : considéré comme déjà dans le solde, le mois prochain", () => {
-    expect(firstMonthlyDebit(13, "2026-09-13")).toBe("2026-10-13");
+  it("jour du prélèvement = aujourd'hui : premier prélèvement aujourd'hui", () => {
+    expect(firstMonthlyDebit(13, "2026-09-13")).toBe("2026-09-13");
+  });
+
+  it("exemples : le 15, prélèvement le 15 → aujourd'hui, le 14 → mois prochain, le 16 → ce mois-ci", () => {
+    expect(firstMonthlyDebit(15, "2026-10-15")).toBe("2026-10-15");
+    expect(firstMonthlyDebit(14, "2026-10-15")).toBe("2026-11-14");
+    expect(firstMonthlyDebit(16, "2026-10-15")).toBe("2026-10-16");
   });
 
   it("« le 31 » : dernier jour des mois plus courts, puis de nouveau le 31", () => {
     expect(firstMonthlyDebit(31, "2026-09-13")).toBe("2026-09-30");
-    expect(firstMonthlyDebit(31, "2026-09-30")).toBe("2026-10-31");
-    expect(firstMonthlyDebit(30, "2026-02-28")).toBe("2026-03-30");
+    expect(firstMonthlyDebit(31, "2026-09-30")).toBe("2026-09-30");
+    expect(firstMonthlyDebit(30, "2026-10-31")).toBe("2026-11-30");
+    expect(firstMonthlyDebit(30, "2026-02-28")).toBe("2026-02-28"); // « le 30 » tombe le 28 en février : aujourd'hui
+    expect(firstMonthlyDebit(30, "2026-02-27")).toBe("2026-02-28");
     expect(firstMonthlyDebit(30, "2026-01-31")).toBe("2026-02-28");
   });
 });
@@ -104,6 +112,14 @@ describe("charges fixes : effet sur le solde", () => {
     const data = deriveBudgetData(state);
     expect(data.upcoming.filter((u) => u.label === "Loyer").map((u) => u.date)).toEqual(["2026-09-25"]);
     expect(liquidBalance(data.accounts, data.transactions, base.today)).toBe(liquidBalance(deriveBudgetData(base).accounts, deriveBudgetData(base).transactions, base.today));
+  });
+
+  it("prélèvement aujourd'hui : généré aujourd'hui, donc déduit du solde actuel", () => {
+    const rule = charge(13);
+    expect(rule.nextOccurrence).toBe("2026-09-13");
+    const state = withRecurring(base, rule);
+    const { created } = materializeRecurring(state.recurring, state.transactions, base.today, ids(), state.accounts);
+    expect(created.map((t) => [t.label, t.date, t.amount])).toEqual([["Loyer", "2026-09-13", 650]]);
   });
 
   it("le mois suivant, le prélèvement est généré à sa date", () => {

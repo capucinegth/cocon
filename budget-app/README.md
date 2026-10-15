@@ -42,9 +42,10 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
   la photo n'est envoyée nulle part ni enregistrée. Le formulaire est pré-rempli, à vérifier avant d'ajouter.
 - **Charges fixes** (Budget → Opérations récurrentes → « Charge fixe ») : nom, montant, jour du
   prélèvement (1–31, « 31 » = dernier jour des mois plus courts), catégorie, compte. Aucune opération
-  n'est créée à l'enregistrement : si le prélèvement de ce mois est déjà passé (ou tombe aujourd'hui),
-  il est considéré comme déjà dans le solde réel et n'est **pas** déduit ; le premier prélèvement compté
-  est le suivant. Ensuite, chaque prélèvement est ajouté automatiquement à sa date.
+  n'est créée à l'enregistrement. Premier prélèvement : aujourd'hui si c'est le jour du prélèvement,
+  ce mois-ci s'il est encore à venir ; s'il est déjà passé, il est considéré comme déjà dans le solde réel
+  et n'est **pas** déduit, le premier prélèvement compté est le mois suivant. Ensuite, chaque prélèvement
+  est ajouté automatiquement à sa date.
 - **Budget par mois** : montant par catégorie, revenus et épargne prévus, reprise automatique
   du mois précédent, préparation du mois suivant, catégories de dépenses et de revenus personnalisées
   (archivage sans perte d'historique, restauration).

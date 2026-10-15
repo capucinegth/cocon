@@ -39,8 +39,7 @@ function FixedChargeForm() {
   const validDay = /^\d{1,2}$/.test(dayText) && day >= 1 && day <= 31;
   const first = validDay ? firstMonthlyDebit(day, today) : null;
   const thisMonth = validDay ? thisMonthDate(day, today) : null;
-  // Aujourd'hui compris : considéré comme déjà dans le solde (jamais déduit deux fois).
-  const alreadyPassed = thisMonth !== null && thisMonth <= today;
+  const alreadyPassed = thisMonth !== null && thisMonth < today;
   const canSubmit = label.trim().length > 0 && amount > 0 && validDay && categoryId !== "" && accountId !== "" && !pending;
 
   async function handleSubmit(event: FormEvent) {
@@ -78,8 +77,8 @@ function FixedChargeForm() {
             {!validDay
               ? "Le même jour chaque mois (« 31 » = dernier jour des mois plus courts)."
               : alreadyPassed
-                ? `Le prélèvement de ce mois (${thisMonth === today ? "aujourd'hui" : `le ${formatLongDate(thisMonth!).toLowerCase()}`}) est considéré comme déjà passé : il n'est pas déduit de ton solde actuel. Premier prélèvement compté : le ${formatLongDate(first!).toLowerCase()}.`
-                : `Premier prélèvement : le ${formatLongDate(first!).toLowerCase()}, puis le ${day} de chaque mois.`}
+                ? `Le prélèvement de ce mois (le ${formatLongDate(thisMonth!).toLowerCase()}) est déjà passé : il n'est pas déduit de ton solde actuel. Premier prélèvement compté : le ${formatLongDate(first!).toLowerCase()}.`
+                : `Premier prélèvement : ${first === today ? "aujourd'hui" : `le ${formatLongDate(first!).toLowerCase()}`}, puis le ${day} de chaque mois.`}
           </span>
         </label>
         <FormField label="Catégorie" as="div">
