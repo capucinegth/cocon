@@ -28,7 +28,7 @@ export function BalanceView() {
   const figures = [
     { label: "Aujourd'hui", value: today.balance, hint: formatShortDate(data.today) },
     { label: "Point le plus bas", value: lowest.balance, hint: `le ${formatShortDate(dateOf(lowest.day))}${lowest.projected ? " (prévu)" : ""}` },
-    { label: `Fin ${formatMonthName(currentMonth).toLowerCase()}`, value: end.balance, hint: "si tu dépenses ton disponible" },
+    { label: `Fin ${formatMonthName(currentMonth).toLowerCase()}`, value: end.balance, hint: "si tu dépenses tout ce que ton budget te laisse" },
   ];
 
   return (
@@ -47,9 +47,9 @@ export function BalanceView() {
       </div>
 
       <Card className="animate-rise [animation-delay:60ms]">
-        <SectionHeader title="Solde total hors épargne" subtitle={`${liquidNames || "Tes comptes"}, jour par jour`} />
+        <SectionHeader title="Sur tes comptes" subtitle={`${liquidNames || "Tes comptes"}, jour par jour`} />
         <AreaChart
-          title={`Solde total hors épargne en ${formatMonthName(currentMonth).toLowerCase()}`}
+          title={`Sur tes comptes en ${formatMonthName(currentMonth).toLowerCase()}`}
           data={series.map((point) => ({
             key: String(point.day),
             label: String(point.day),

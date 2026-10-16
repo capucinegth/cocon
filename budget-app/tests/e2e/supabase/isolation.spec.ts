@@ -21,7 +21,7 @@ test("les opérations, objectifs et budgets d'Alice sont invisibles pour Bob", a
   await signUp(bob, { name: "Bob", prefix: "bob" });
   await expect(bob.getByRole("heading", { name: "Bienvenue dans Cocon, Bob" })).toBeVisible();
   await bob.goto("/transactions");
-  await expect(bob.getByText("Aucune opération ce mois-ci")).toBeVisible();
+  await expect(bob.getByText("Rien ce mois-ci")).toBeVisible();
   await expect(bob.getByText("Secret d'Alice")).toHaveCount(0);
   await bob.goto("/objectifs");
   await expect(bob.getByText("Projet d'Alice")).toHaveCount(0);

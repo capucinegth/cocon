@@ -5,12 +5,18 @@ import { SectionHeader } from "@/components/ui/section-header";
 import type { MonthSummary } from "@/lib/budget";
 
 /**
- * « Ce qu'il te reste » : le calcul complet, ligne à ligne, pour comprendre
- * d'où vient le chiffre principal. Partagé entre l'accueil et le budget.
+ * « Le calcul du mois » : le calcul complet, ligne à ligne, pour comprendre
+ * d'où vient le chiffre principal (« Tu peux encore dépenser »). Affiché dans Budget.
  */
 export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
   const rows: { label: string; value: number; sign?: "always"; hint?: ReactNode }[] = [
-    { label: "Revenus", value: summary.income, sign: "always" as const },
+    {
+      label: "Revenus",
+      value: summary.income,
+      sign: "always" as const,
+      hint:
+        summary.incomeUpcoming + summary.incomeExpected > 0 ? <>dont <Money value={summary.incomeUpcoming + summary.incomeExpected} /> attendus</> : undefined,
+    },
     {
       label: "Charges fixes",
       value: -summary.fixed,
@@ -25,10 +31,10 @@ export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
   ];
 
   return (
-    <Card>
+    <Card id="calcul" className="scroll-mt-6">
       <SectionHeader
-        title={summary.isPast ? "Ce qu'il t'est resté" : "Ce qu'il te reste"}
-        subtitle="Le calcul, ligne par ligne"
+        title={summary.isPast ? "Ce qu'il t'est resté" : "Le calcul du mois"}
+        subtitle={summary.isPast ? "Le calcul, ligne par ligne" : "D'où vient ce que tu peux encore dépenser"}
       />
       <dl className="flex flex-col gap-3.5">
         {rows.map((row) => (
@@ -44,7 +50,7 @@ export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
         ))}
       </dl>
       <div className="mt-4 flex items-baseline justify-between gap-4 rounded-2xl bg-blush-50 px-4 py-3.5">
-        <p className="text-[15px] font-semibold">{summary.isPast ? "Resté en fin de mois" : "Disponible réel"}</p>
+        <p className="text-[15px] font-semibold">{summary.isPast ? "Resté en fin de mois" : "Tu peux encore dépenser"}</p>
         <Money value={summary.remaining} cents="always" className="text-xl font-semibold tracking-tight" />
       </div>
     </Card>

@@ -3,7 +3,6 @@
 import {
   ArchiveRestore,
   ChevronRight,
-  Coins,
   Download,
   EyeOff,
   Info,
@@ -13,12 +12,9 @@ import {
   Repeat,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
-  Sprout,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/layout/brand";
 import { PageHeader } from "@/components/layout/page-header";
@@ -29,7 +25,6 @@ import { Toggle } from "@/components/ui/toggle";
 import { appConfig } from "@/config/app";
 import { isExpenseCategory } from "@/config/categories";
 import { accountBalance, accountTypeLabel, liquidBalance, netWorth } from "@/lib/accounts";
-import { planFor } from "@/lib/budget";
 import { downloadText, transactionsToCsv } from "@/lib/export";
 import { errorMessage } from "@/services/repository";
 import { hasActiveCategoryNamed } from "@/store/budget-state";
@@ -77,9 +72,9 @@ function SettingsRow({ icon: Icon, label, hint, children, onClick }: RowProps) {
   );
 }
 
-function SettingsGroup({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function SettingsGroup({ id, title, description, children }: { id?: string; title: string; description?: string; children: ReactNode }) {
   return (
-    <section className="animate-rise">
+    <section id={id} className="scroll-mt-6 animate-rise">
       <div className="mb-2 px-1">
         <h2 className="text-sm font-semibold text-ink-soft">{title}</h2>
         {description && <p className="text-[13px] text-muted">{description}</p>}
@@ -102,8 +97,7 @@ export function SettingsScreen() {
   const data = useBudget();
   const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile, restoreCategory } = data;
   const { signOut } = useSession();
-  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openTargets, openAccount, openPassword } = useUI();
-  const router = useRouter();
+  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openAccount, openPassword } = useUI();
   const [signingOut, setSigningOut] = useState(false);
   const isDemo = source === "demo";
 
@@ -127,8 +121,6 @@ export function SettingsScreen() {
       setRestoringId(null);
     }
   }
-  const plan = planFor(data, currentMonth);
-  const variableBudget = expenseCategories.filter((c) => c.group === "variables").reduce((acc, c) => acc + (plan?.planned[c.id] ?? 0), 0);
 
   function exportCsv() {
     if (data.allTransactions.length === 0) return showToast("Aucune opération à exporter pour l'instant");
@@ -142,7 +134,7 @@ export function SettingsScreen() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-start">
         <div className="flex flex-col gap-6">
-          <SettingsGroup title="Compte">
+          <SettingsGroup title="Moi">
             <li className="flex items-center gap-4 px-3 py-3">
               <BrandMark size={52} />
               <div className="min-w-0">
@@ -191,6 +183,7 @@ export function SettingsScreen() {
           </SettingsGroup>
 
           <SettingsGroup
+            id="mes-comptes"
             title="Mes comptes"
             description="Soldes calculés : solde de départ + opérations et versements d'épargne saisis dans Cocon. Touche un compte pour le modifier."
           >
@@ -225,37 +218,20 @@ export function SettingsScreen() {
             </SettingsRow>
             <li className="mt-1 flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
               <span className="min-w-0">
-                <span className="block text-[15px] font-semibold">Solde total hors épargne</span>
-                <span className="block text-[13px] text-muted">Comptes courants et espèces</span>
+                <span className="block text-[15px] font-semibold">Sur tes comptes</span>
+                <span className="block text-[13px] text-muted">Comptes courants, joints et espèces</span>
               </span>
               <Money value={liquidBalance(accounts, data.allTransactions, data.today)} cents="always" className="tabular shrink-0 text-[15px] font-semibold" />
             </li>
             <li className="mt-1 flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
               <span className="min-w-0">
-                <span className="block text-[15px] font-semibold">Patrimoine total</span>
-                <span className="block text-[13px] text-muted">Tous tes comptes, épargne comprise</span>
+                <span className="block text-[15px] font-semibold">Tout ton argent</span>
+                <span className="block text-[13px] text-muted">Tes comptes et ton épargne</span>
               </span>
               <Money value={netWorth(accounts, data.allTransactions, data.today)} cents="always" className="tabular shrink-0 text-[15px] font-semibold" />
             </li>
           </SettingsGroup>
 
-          <SettingsGroup title="Budget">
-            <SettingsRow icon={Sparkles} label="Budget du quotidien" hint="Courses, sorties, imprévus" onClick={() => router.push("/budget")}>
-              <Value>
-                <Money value={variableBudget} />
-              </Value>
-            </SettingsRow>
-            <SettingsRow icon={Coins} label="Revenus prévus" hint="Comptés tant qu'ils ne sont pas saisis" onClick={() => openTargets(currentMonth)}>
-              <Value>
-                <Money value={plan?.incomeTarget ?? 0} />
-              </Value>
-            </SettingsRow>
-            <SettingsRow icon={Sprout} label="Épargne mensuelle" hint="Répartie entre tes objectifs" onClick={() => openTargets(currentMonth)}>
-              <Value>
-                <Money value={plan?.savingsTarget ?? 0} />
-              </Value>
-            </SettingsRow>
-          </SettingsGroup>
 
         </div>
 
@@ -322,7 +298,7 @@ export function SettingsScreen() {
             </SettingsRow>
           </SettingsGroup>
 
-          <SettingsGroup title="Préférences">
+          <SettingsGroup title="Affichage">
             <SettingsRow icon={EyeOff} label="Mode discret" hint="Floute les montants, pratique en public">
               <Toggle
                 checked={discreet}

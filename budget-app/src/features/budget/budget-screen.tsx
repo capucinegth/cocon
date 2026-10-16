@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Plus, ReceiptText, Sprout, Wallet } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { RemainingBreakdown } from "@/components/finance/remaining-breakdown";
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,7 +9,6 @@ import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { MonthSwitcher } from "@/components/ui/month-switcher";
 import { SectionHeader } from "@/components/ui/section-header";
-import { StatCard } from "@/components/ui/stat-card";
 import { availableMonths, getExpenseUsages, getMonthSummary, planFor, total } from "@/lib/budget";
 import { addMonths, formatMonth, formatMonthName } from "@/lib/dates";
 import { useBudget } from "@/store/budget-store";
@@ -32,13 +31,12 @@ export function BudgetScreen() {
   const plannedTotal = total(usages.map((u) => u.planned));
   const monthName = formatMonthName(month).toLowerCase();
   const elided = /^[aeiouyéè]/i.test(monthName) ? `d'${monthName}` : `de ${monthName}`;
-  const incomeToCome = summary.incomeUpcoming + summary.incomeExpected;
 
   return (
     <>
       <PageHeader
         title={`Budget ${elided}`}
-        subtitle="Ce qui est prévu, dépensé et encore disponible"
+        subtitle="Ce qui est prévu, dépensé, et ce que tu peux encore dépenser"
         actions={
           <div className="hidden sm:block">
             <Button variant="soft" onClick={openCategorySheet}>
@@ -57,50 +55,10 @@ export function BudgetScreen() {
         </p>
       )}
 
-      <div className="grid animate-rise grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard
-          tone="blush"
-          icon={Banknote}
-          label="Revenus"
-          value={<Money value={summary.income} />}
-          caption={
-            incomeToCome > 0 ? (
-              <>
-                dont <Money value={incomeToCome} /> attendus
-              </>
-            ) : summary.isPast ? (
-              "Reçus ce mois-là"
-            ) : (
-              "Reçus ce mois-ci"
-            )
-          }
-        />
-        <StatCard
-          tone="peach"
-          icon={ReceiptText}
-          label="Dépenses prévues"
-          value={<Money value={summary.committed} />}
-          caption="Payées ou à venir"
-        />
-        <StatCard tone="sage" icon={Sprout} label="Épargne" value={<Money value={summary.savingsReserved} />} caption="Pour tes objectifs" />
-        <StatCard
-          tone="lilac"
-          icon={Wallet}
-          label="Disponible"
-          value={<Money value={summary.remaining} cents="always" />}
-          caption={
-            <>
-              ≈ <Money value={summary.perDay} cents="always" /> / jour
-            </>
-          }
-          className="bg-linear-to-br from-blush-100 to-lilac-50"
-        />
-      </div>
-
-      <div className="mt-4 flex flex-col gap-4 sm:mt-5 sm:gap-5 xl:grid xl:grid-cols-12 xl:items-start">
+      <div className="flex flex-col gap-4 sm:gap-5 xl:grid xl:grid-cols-12 xl:items-start">
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-7">
-          <div className="order-1 animate-rise [animation-delay:50ms]">
-            <BudgetSplitCard summary={summary} />
+          <div className="order-1 animate-rise">
+            <RemainingBreakdown summary={summary} />
           </div>
           <Card className="order-2 animate-rise [animation-delay:100ms]">
             <SectionHeader
@@ -132,7 +90,7 @@ export function BudgetScreen() {
 
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:sticky xl:top-6 xl:col-span-5">
           <div className="order-3 animate-rise [animation-delay:150ms]">
-            <RemainingBreakdown summary={summary} />
+            <BudgetSplitCard summary={summary} />
           </div>
           <div className="order-4 animate-rise [animation-delay:200ms]">
             <IncomeSavingsCard summary={summary} />

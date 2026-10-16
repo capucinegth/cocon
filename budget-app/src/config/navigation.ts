@@ -20,7 +20,7 @@ export interface NavItem {
 export const mainNav: NavItem[] = [
   { href: "/", label: "Accueil", icon: House },
   { href: "/budget", label: "Budget", icon: Wallet },
-  { href: "/transactions", label: "Transactions", shortLabel: "Opérations", icon: ArrowLeftRight },
+  { href: "/transactions", label: "Dépenses et revenus", shortLabel: "Dépenses", icon: ArrowLeftRight },
   { href: "/objectifs", label: "Objectifs", icon: Target },
   { href: "/statistiques", label: "Statistiques", shortLabel: "Stats", icon: ChartColumn },
 ];

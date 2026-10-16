@@ -1,11 +1,13 @@
-# Cocon — budget mensuel (V3)
+# Cocon — budget mensuel (V4)
 
 Application web personnelle de gestion de budget, pensée mobile d'abord.
 Question centrale : **« Combien puis-je réellement dépenser aujourd'hui sans mettre mon budget en danger ? »**
 
 La V3 transforme le prototype en vraie application : comptes utilisateurs, données enregistrées
 dans Supabase (PostgreSQL + Auth + RLS), retrouvées après rechargement et sur tous les appareils.
-L'interface de la V2 est conservée.
+La V4 simplifie l'interface sans toucher aux calculs : l'accueil répond d'abord à
+**« Combien puis-je encore dépenser ? »**, le vocabulaire est unifié et l'ajout d'une dépense tient en
+trois gestes (montant → catégorie suggérée → Ajouter).
 
 ## Deux modes, jamais mélangés
 
@@ -32,15 +34,27 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 - **Compte** : inscription (prénom facultatif), connexion, déconnexion, mot de passe oublié,
   modification du mot de passe, session persistante,
   pages protégées, session expirée → retour à la connexion avec un message clair, erreurs en français.
-- **Opérations** : ajout, modification, suppression (avec annulation), note facultative, filtres,
-  recherche, opérations datées dans le futur (« À venir », y compris les mois suivants), récurrences
+- **Accueil (toujours le mois en cours)** : « Tu peux encore dépenser » (réponse du budget du mois),
+  montant par jour, état du budget expliqué en une phrase (jamais de phrase rassurante si les données ne
+  la justifient pas) ; **garde de trésorerie** : si l'argent des comptes hors épargne, après les opérations
+  à venir du mois, passerait sous zéro ou ne couvrirait pas ce que le budget laisse à dépenser, une alerte
+  s'affiche — le chiffre du budget n'est jamais remplacé (`src/lib/treasury.ts`) ; « Prochainement »
+  (4 prochaines opérations) ; « Mon argent » (sur tes comptes · épargne · tout ton argent) ; dernières dépenses.
+  Le calcul ligne à ligne est dans Budget (« Voir le calcul »).
+- **Ajout rapide** : montant, catégorie **suggérée** d'après tes habitudes (les 4 plus utilisées, toutes
+  accessibles), Ajouter. Description, note, date, répétition et compte sont dans « Plus d'options »
+  (résumé visible). Un marchand déjà saisi reprend sa catégorie et son compte, sans jamais écraser un choix
+  explicite (`src/lib/suggestions.ts` : local, déterministe, aucun service externe).
+- **Dépenses et revenus** : ajout, modification, suppression (avec annulation), note facultative, filtres,
+  recherche, reçu / dépensé du mois (l'épargne à part), calendrier du mois, opérations datées dans le futur
+  (« À venir », y compris les mois suivants), opérations qui se répètent
   hebdomadaires / mensuelles générées automatiquement à échéance — description, montant, fréquence,
   prochaine échéance, catégorie, compte modifiables ; pause et reprise sans rattrapage —, export CSV.
 - **Scan de ticket de caisse** : dans « Ajouter une dépense », « Scanner un ticket » ouvre l'appareil photo ;
   le montant (TOTAL / NET À PAYER), le magasin et la date sont lus **sur l'appareil** (Tesseract,
   fichiers servis par Cocon depuis `/ocr`, copiés depuis `node_modules` à chaque `dev` / `build`) :
   la photo n'est envoyée nulle part ni enregistrée. Le formulaire est pré-rempli, à vérifier avant d'ajouter.
-- **Charges fixes** (Budget → Opérations récurrentes → « Charge fixe ») : nom, montant, jour du
+- **Charges fixes** (Budget → Prélèvements et revenus réguliers → « Charge fixe ») : nom, montant, jour du
   prélèvement (1–31, « 31 » = dernier jour des mois plus courts), catégorie, compte. Aucune opération
   n'est créée à l'enregistrement. Premier prélèvement : aujourd'hui si c'est le jour du prélèvement,
   ce mois-ci s'il est encore à venir ; s'il est déjà passé, il est considéré comme déjà dans le solde réel
@@ -51,16 +65,21 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
   (archivage sans perte d'historique, restauration).
 - **Mes comptes** : création (compte courant, joint, espèces, épargne ou autre, avec son solde de départ ;
   un compte d'épargne ne reçoit que des versements d'épargne), nom, solde de départ, actif / désactivé (jamais supprimé ; ses récurrences
-  sont mises en pause), ordre d'affichage ; solde calculé par compte, solde total hors épargne
-  et patrimoine total.
+  sont mises en pause), ordre d'affichage ; solde calculé par compte, « Sur tes comptes » (hors épargne)
+  et « Tout ton argent » (comptes + épargne).
 - **Épargne = transfert** : un versement passe d'un compte hors épargne vers un compte d'épargne
-  (Livret A) ; le patrimoine ne change pas et le disponible ne le déduit qu'une fois.
-- **Objectifs** : création, versement, progression calculée en base, modification, suppression.
-- **Accueil / Statistiques** : disponible réel, disponible par jour, état du budget, calendrier,
-  statistiques de n'importe quel mois, solde total hors épargne, tendances — tout est recalculé
+  (Livret A) ; « tout ton argent » ne change pas et ce que tu peux dépenser ne le déduit qu'une fois.
+- **Objectifs** : création, versement, progression calculée en base, modification, suppression. Le total
+  « mis de côté pour tes objectifs » suit leurs versements ; s'il diffère de l'épargne sur les comptes,
+  une note l'explique (rien n'est recalculé).
+- **Statistiques** : n'importe quel mois, sur tes comptes jour par jour, tendances — tout est recalculé
   automatiquement à chaque saisie.
-- **Paramètres** : prénom et mode discret enregistrés dans le profil (retrouvés sur un autre appareil),
-  comptes, catégories, budget du mois, export CSV. Aucun réglage factice.
+- **Paramètres** : Moi (prénom, mot de passe, déconnexion), Mes comptes, Catégories, Affichage (mode discret,
+  enregistré dans le profil), Mes données (export CSV), À propos. Les réglages du budget sont dans Budget.
+  Aucun réglage factice.
+- **Responsive** : mobile d'abord ; tablette en deux colonnes ; grand écran avec barre latérale et
+  colonnes côte à côte. Vérifié automatiquement à 320, 375, 390, 430, 768, 1024, 1280 et 1440 px
+  (aucun débordement, aucun élément hors écran, pages et feuilles).
 - **États** : chargement, erreur avec « Réessayer », compte neuf (« Bienvenue dans Cocon »),
   enregistrement impossible (message clair, saisie conservée).
 - **Application installable (PWA)** : manifeste, icônes, page hors connexion. Le service worker
@@ -81,7 +100,8 @@ UI (features/, components/)
 ```
 
 - Calculs centralisés et testés : `src/lib/budget.ts`, `accounts.ts`, `timeline.ts`, `recurrence.ts`, `goals.ts`,
-  `receipt.ts` (lecture du texte d'un ticket).
+  `receipt.ts` (lecture du texte d'un ticket), `treasury.ts` (mon argent, garde de trésorerie),
+  `suggestions.ts` (catégories et marchands déjà vus).
 - Dates en heure de Paris (`src/lib/paris-time.ts`), montants en centimes entiers en base.
 - Session : `@supabase/ssr` (cookies), rafraîchie et vérifiée par `src/proxy.ts`.
 - Une modification est enregistrée **puis** affichée : en cas d'échec, rien ne change à l'écran.

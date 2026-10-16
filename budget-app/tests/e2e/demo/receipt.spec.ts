@@ -3,7 +3,7 @@
  * lit une image de ticket générée pour le test, puis le formulaire est pré-rempli.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { heroAmount, openAdd, sheet } from "../support";
+import { chooseCategory, heroAmount, openAdd, sheet } from "../support";
 
 /** Image PNG d'un ticket (rendue par le navigateur, comme une photo bien cadrée). */
 async function receiptImage(page: Page): Promise<Buffer> {
@@ -41,7 +41,7 @@ test("scanner un ticket : montant, magasin et date pré-remplis, à vérifier", 
   await expect(sheet(page).getByLabel(/Description/)).toHaveValue("Monoprix");
   // 12 septembre (veille du jour de la démo) : « Hier ».
   await expect(sheet(page).getByRole("button", { name: "Hier" })).toHaveAttribute("aria-pressed", "true");
-  await sheet(page).getByRole("button", { name: /Courses/ }).first().click();
+  await chooseCategory(page, /Courses/);
   await sheet(page).getByRole("button", { name: /^Ajouter −7,82/ }).click();
   await expect.poll(() => heroAmount(page)).toBe("635,38 €"); // 643,20 − 7,82 : la dépense est déduite du disponible
 });

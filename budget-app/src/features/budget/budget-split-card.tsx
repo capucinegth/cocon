@@ -23,15 +23,16 @@ export function BudgetSplitCard({ summary }: { summary: MonthSummary }) {
   ];
   const legend = [
     ...segments,
-    { id: "disponible", label: "Disponible", value: Math.max(summary.remaining, 0), swatch: "bg-blush-100 ring-1 ring-blush-300", hint: "Encore libre" },
+    { id: "disponible", label: "Encore à dépenser", value: Math.max(summary.remaining, 0), swatch: "bg-blush-100 ring-1 ring-blush-300", hint: "Ce que tu peux encore dépenser" },
   ];
   const active = legend.find((item) => item.id === activeId);
   const share = (value: number) => (summary.income > 0 ? formatPercent(value / summary.income) : "—");
 
   return (
-    <Card>
+    // Requête de conteneur : la carte s'adapte à la colonne qui l'accueille (pleine largeur ou colonne latérale).
+    <Card className="@container">
       <SectionHeader title="Où va ton argent" subtitle={<>Répartition de tes <Money value={summary.income} /> de revenus</>} />
-      <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-8">
+      <div className="flex flex-col items-center gap-6 @lg:flex-row @lg:items-center @lg:gap-8">
         <DonutChart
           title="Répartition des revenus du mois"
           segments={segments}
@@ -42,13 +43,13 @@ export function BudgetSplitCard({ summary }: { summary: MonthSummary }) {
           size={208}
         >
           <div className="max-w-[8.5rem]">
-            <p className="text-[13px] font-medium text-muted">{active?.label ?? "Disponible"}</p>
+            <p className="text-[13px] font-medium text-muted">{active?.label ?? "Encore à dépenser"}</p>
             <Money value={active?.value ?? summary.remaining} cents="always" className="text-[22px] font-semibold tracking-tight" />
             <p className="text-[13px] text-muted">{share(active?.value ?? summary.remaining)} des revenus</p>
           </div>
         </DonutChart>
 
-        <ul className="flex w-full flex-col gap-1">
+        <ul className="flex w-full min-w-0 flex-col gap-1">
           {legend.map((item) => (
             <li key={item.id}>
               <button

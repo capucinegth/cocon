@@ -17,13 +17,13 @@ test("dépense : ajout, rechargement, autre appareil, modification, suppression"
   await page.reload();
   await expect.poll(() => heroAmount(page)).toBe("−54,20 €");
   await page.goto("/transactions");
-  await expect(page.getByRole("button", { name: /Carrefour/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Carrefour/ })).toBeVisible();
 
   const phone = await otherDevice(browser, email);
   await phone.goto("/transactions");
-  await expect(phone.getByRole("button", { name: /Carrefour/ })).toBeVisible();
+  await expect(phone.getByRole("button", { name: /^Carrefour/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /Carrefour/ }).click();
+  await page.getByRole("button", { name: /^Carrefour/ }).click();
   await sheet(page).getByRole("button", { name: "Modifier" }).click();
   await sheet(page).getByLabel("Montant en euros").fill("60");
   await sheet(page).getByRole("button", { name: /^Enregistrer −60/ }).click();
@@ -31,13 +31,13 @@ test("dépense : ajout, rechargement, autre appareil, modification, suppression"
   await page.reload();
   await expect(page.getByRole("button", { name: "Carrefour Courses −60 €" })).toBeVisible();
 
-  await page.getByRole("button", { name: /Carrefour/ }).click();
+  await page.getByRole("button", { name: /^Carrefour/ }).click();
   await sheet(page).getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Opération supprimée")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Aucune opération ce mois-ci")).toBeVisible();
+  await expect(page.getByText("Rien ce mois-ci")).toBeVisible();
   await phone.reload();
-  await expect(phone.getByText("Aucune opération ce mois-ci")).toBeVisible();
+  await expect(phone.getByText("Rien ce mois-ci")).toBeVisible();
   await phone.context().close();
 });
 
@@ -74,6 +74,8 @@ test("récurrence mensuelle : visible dans le budget, mise en pause, suppression
   await openAdd(page);
   await fillOperation(page, { amount: "650", label: "Loyer", category: /Logement/, recurrence: "Chaque mois" });
   await sheet(page).getByRole("button", { name: /^Ajouter −650/ }).click();
+  // Enregistrement terminé avant de recharger une autre page (sinon la requête peut être interrompue).
+  await expect(page.getByText(/Dépense ajoutée/)).toBeVisible();
   await page.goto("/budget");
   const rule = page.getByRole("button", { name: /Loyer.*Chaque mois · prochaine le/ });
   await expect(rule).toBeVisible();
@@ -93,7 +95,7 @@ test("récurrence mensuelle : visible dans le budget, mise en pause, suppression
   await expect(page.getByText(/Aucune pour l'instant/)).toBeVisible();
   // L'opération déjà passée est conservée.
   await page.goto("/transactions");
-  await expect(page.getByRole("button", { name: /Loyer/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Loyer/ })).toBeVisible();
 });
 
 test("objectif : création, versement, progression, suppression", async ({ page, browser }) => {
@@ -156,8 +158,6 @@ test("profil et mode discret suivent le compte sur un autre appareil", async ({ 
   await expect(page.getByText("Profil mis à jour")).toBeVisible();
   await page.getByRole("switch", { name: "Mode discret" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-discreet", "");
-  await page.getByRole("switch", { name: "Rappel du soir" }).click();
-  await expect(page.getByRole("switch", { name: "Rappel du soir" })).toHaveAttribute("aria-checked", "true");
   // Le changement n'est affiché qu'après enregistrement ; on laisse aussi finir le réseau.
   await page.waitForLoadState("networkidle");
 
@@ -165,7 +165,7 @@ test("profil et mode discret suivent le compte sur un autre appareil", async ({ 
   await expect(phone.getByRole("heading", { name: "Bonjour Sacha 👋" })).toBeVisible();
   await expect(phone.locator("html")).toHaveAttribute("data-discreet", "");
   await phone.goto("/parametres");
-  await expect(phone.getByRole("switch", { name: "Rappel du soir" })).toHaveAttribute("aria-checked", "true");
+  await expect(phone.getByRole("switch", { name: "Mode discret" })).toHaveAttribute("aria-checked", "true");
   await phone.context().close();
 });
 
@@ -174,6 +174,7 @@ test("export CSV de ses opérations", async ({ page }) => {
   await openAdd(page);
   await fillOperation(page, { amount: "12,5", label: "Boulangerie", category: /Courses/ });
   await sheet(page).getByRole("button", { name: /^Ajouter −12,50/ }).click();
+  await expect(page.getByText(/Dépense ajoutée/)).toBeVisible();
   await page.goto("/parametres");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: /Exporter mes données/ }).click();

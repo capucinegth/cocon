@@ -1,37 +1,46 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { RemainingBreakdown } from "@/components/finance/remaining-breakdown";
+import { useMemo } from "react";
 import { PageHeader } from "@/components/layout/page-header";
-import { MonthSwitcher } from "@/components/ui/month-switcher";
-import { availableMonths, getMonthSummary } from "@/lib/budget";
+import { monthUpcoming } from "@/lib/budget";
+import { capitalize, formatLongDate } from "@/lib/dates";
+import { getTreasuryAlert } from "@/lib/treasury";
 import { useBudget } from "@/store/budget-store";
 import { AvailableHero } from "./available-hero";
-import { CalendarCard } from "./calendar-card";
-import { GoalTeaser } from "./goal-teaser";
-import { KeyFigures } from "./key-figures";
+import { MoneyOverview } from "./money-overview";
 import { RecentTransactions } from "./recent-transactions";
+import { TreasuryNotice } from "./treasury-notice";
 import { UpcomingList } from "./upcoming-list";
 import { WelcomeCard } from "./welcome-card";
 
 /**
- * Accueil. Mobile : une colonne, dans l'ordre d'importance.
- * Desktop : deux colonnes (l'essentiel à gauche, l'anticipation à droite).
+ * Accueil : TOUJOURS la situation actuelle (les mois passés se consultent dans Budget et Statistiques).
+ * Ordre d'importance : ce que je peux dépenser → alerte éventuelle → prochainement → mon argent → dernières dépenses.
+ * Mobile : une colonne. Tablette : deux colonnes sous le chiffre principal. Grand écran : essentiel à gauche,
+ * anticipation à droite.
  */
 export function HomeScreen() {
   const data = useBudget();
-  const [month, setMonth] = useState(data.currentMonth);
-  const months = useMemo(() => availableMonths(data), [data]);
-  const summary = useMemo(() => getMonthSummary(data, month), [data, month]);
+  const { summary } = data;
   const name = data.profile?.displayName.trim();
   // Nouveau compte : aucune opération, aucun budget, aucun objectif.
   const isNew = data.allTransactions.length === 0 && data.plans.length === 0 && data.goals.length === 0;
+  const alert = useMemo(
+    () =>
+      getTreasuryAlert({
+        accounts: data.accounts,
+        transactions: data.allTransactions,
+        upcoming: monthUpcoming(data, data.currentMonth),
+        today: data.today,
+        remaining: summary.remaining,
+        incomeExpected: summary.incomeExpected,
+      }),
+    [data, summary],
+  );
 
   return (
     <>
-      <PageHeader title={name ? `Bonjour ${name} 👋` : "Bonjour 👋"}>
-        <MonthSwitcher month={month} months={months} onChange={setMonth} />
-      </PageHeader>
+      <PageHeader title={name ? `Bonjour ${name} 👋` : "Bonjour 👋"} subtitle={capitalize(formatLongDate(data.today))} />
 
       {isNew && (
         <div className="mb-4 animate-rise sm:mb-5">
@@ -39,31 +48,27 @@ export function HomeScreen() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:gap-5 xl:grid xl:grid-cols-12 xl:items-start">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-12 xl:items-start">
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-7">
-          <div className="order-1 animate-rise">
-            <AvailableHero summary={summary} />
+          <div className="order-1 animate-rise md:col-span-2">
+            <AvailableHero summary={summary} reassure={!alert} />
           </div>
-          <div className="order-2 animate-rise [animation-delay:50ms]">
-            <KeyFigures summary={summary} />
-          </div>
-          <div className="order-3 animate-rise [animation-delay:100ms]">
-            <RemainingBreakdown summary={summary} />
-          </div>
-          <div className="order-5 animate-rise [animation-delay:150ms]">
-            <RecentTransactions key={month} month={month} />
+          {alert && (
+            <div className="order-2 animate-rise md:col-span-2">
+              <TreasuryNotice alert={alert} />
+            </div>
+          )}
+          <div className="order-5 animate-rise [animation-delay:150ms] md:col-span-2">
+            <RecentTransactions />
           </div>
         </div>
 
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-5">
-          <div className="order-4 animate-rise [animation-delay:120ms]">
-            <UpcomingList summary={summary} />
+          <div className="order-3 animate-rise [animation-delay:60ms]">
+            <UpcomingList />
           </div>
-          <div className="order-6 animate-rise [animation-delay:180ms]">
-            <CalendarCard key={month} month={month} />
-          </div>
-          <div className="order-7 animate-rise [animation-delay:220ms]">
-            <GoalTeaser />
+          <div className="order-4 animate-rise [animation-delay:110ms]">
+            <MoneyOverview />
           </div>
         </div>
       </div>

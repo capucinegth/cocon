@@ -23,8 +23,8 @@ export function RecurringCard() {
   return (
     <Card>
       <SectionHeader
-        title="Opérations récurrentes"
-        subtitle="Ajoutées automatiquement à chaque échéance"
+        title="Prélèvements et revenus réguliers"
+        subtitle="Ajoutés automatiquement à chaque échéance"
         aside={
           <button
             type="button"
