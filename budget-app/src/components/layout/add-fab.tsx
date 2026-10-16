@@ -11,7 +11,8 @@ export function AddFab() {
   const { openAdd } = useUI();
   const { status } = useBudget();
 
-  if (pathname.startsWith("/parametres") || status !== "ready") return null;
+  // Dans « Mes papiers », le bouton flottant du module ajoute un document à la place.
+  if (pathname.startsWith("/parametres") || pathname.startsWith("/administratif") || status !== "ready") return null;
 
   return (
     <button

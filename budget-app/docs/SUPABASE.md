@@ -27,6 +27,8 @@ migration vérifie qu'il correspond bien à l'URL utilisée par l'application.
 | `20261005090200_cocon_rls.sql` | RLS sur toutes les tables, droits minimaux, retrait des droits par défaut |
 | `20261005090300_cocon_functions.sql` | Récurrences (`materialize_recurring_transactions`), budget du mois (`ensure_month_budget`) |
 | `20261012090000_cocon_transferts_epargne.sql` | V3 : épargne = transfert vers un compte d'épargne (`transfer_account_id`), aucune récurrence générée sur un compte désactivé |
+| `20261016090000_cocon_administratif.sql` | Mes papiers : tables `documents`, `document_fields`, `document_deadlines` (RLS, contraintes) |
+| `20261016090100_cocon_administratif_stockage.sql` | Mes papiers : espace de stockage **privé** `documents` (20 Mo, PDF / JPEG / PNG / WebP) et ses règles d'accès |
 
 Trois possibilités :
 - **Script de Cocon (recommandé)** — vérifie tout avant d'écrire quoi que ce soit :
@@ -74,6 +76,51 @@ alter table public.transactions drop column transfer_account_id;
 alter table public.recurring_transactions drop column transfer_account_id;
 -- puis ré-exécuter la définition de materialize_recurring_transactions de 20261005090300_cocon_functions.sql
 ```
+
+### Module « Mes papiers » (administratif)
+
+Deux migrations **additives**, à appliquer dans l'ordre, dans le SQL Editor, AVANT de fusionner le code :
+
+1. `20261016090000_cocon_administratif.sql` — trois nouvelles tables, aucune table existante modifiée :
+   - `documents` : la fiche d'un document (catégorie, type, titre, période, fichier). Le chemin du fichier
+     commence toujours par l'identifiant de son propriétaire (contrainte) ; format et taille contrôlés.
+   - `document_fields` : informations d'un document (employeur, salaire net, date d'échéance…),
+     « proposée » ou « validée » par l'utilisateur ; une seule valeur typée par information.
+   - `document_deadlines` : échéances d'un document (fin de contrat, date limite…).
+   RLS sur les trois tables (lecture / création / modification / suppression limitées au propriétaire),
+   rien pour les visiteurs, suppression d'un document → ses informations et échéances (cascade).
+2. `20261016090100_cocon_administratif_stockage.sql` — espace de stockage `documents` **non public**,
+   20 Mo au plus, PDF / JPEG / PNG / WebP ; chacun ne peut lire, déposer ou supprimer que dans son
+   dossier (`<user_id>/…`) ; aucun fichier modifiable. Les fichiers ne s'ouvrent que par un lien
+   temporaire signé (60 s). Échoue si un espace `documents` existe déjà (aucun mélange).
+
+Si le code est déployé AVANT ces migrations, seul « Mes papiers » affiche « Tes documents n'ont pas pu
+être chargés » ; le Budget n'est pas concerné (chargement séparé).
+
+Vérification, en lecture seule :
+```sql
+select relname, relrowsecurity from pg_class where relname in ('documents', 'document_fields', 'document_deadlines');
+select tablename, count(*) from pg_policies where tablename in ('documents', 'document_fields', 'document_deadlines') group by 1;
+select id, public, file_size_limit, allowed_mime_types from storage.buckets where id = 'documents';
+select policyname from pg_policies where schemaname = 'storage' and policyname like 'documents (stockage)%';
+```
+Attendu : RLS activée sur les 3 tables (4 politiques chacune), espace `documents` avec `public = false`,
+3 politiques de stockage.
+
+Retour arrière, seulement si nécessaire (supprime les documents enregistrés ; les données du Budget
+ne sont pas concernées). D'abord vider l'espace `documents` depuis le tableau de bord (Storage), puis :
+```sql
+drop policy "documents (stockage) : lecture de ses fichiers" on storage.objects;
+drop policy "documents (stockage) : dépôt dans son dossier" on storage.objects;
+drop policy "documents (stockage) : suppression de ses fichiers" on storage.objects;
+delete from storage.buckets where id = 'documents';
+drop table public.document_deadlines;
+drop table public.document_fields;
+drop table public.documents;
+```
+
+> Suppression d'un compte utilisateur : la cascade efface ses fiches, mais les fichiers du Storage
+> doivent être supprimés via l'API Storage (dossier `<user_id>/`) — à prévoir avant toute suppression de compte.
 
 > Ne jamais appliquer `supabase/tests/support/local-auth-shim.sql` : il ne sert qu'aux tests locaux.
 

@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   ChartColumn,
+  FolderOpen,
   House,
   Settings,
   Target,
@@ -22,6 +23,7 @@ export const mainNav: NavItem[] = [
   { href: "/budget", label: "Budget", icon: Wallet },
   { href: "/transactions", label: "Dépenses et revenus", shortLabel: "Dépenses", icon: ArrowLeftRight },
   { href: "/objectifs", label: "Objectifs", icon: Target },
+  { href: "/administratif", label: "Administratif", shortLabel: "Papiers", icon: FolderOpen },
   { href: "/statistiques", label: "Statistiques", shortLabel: "Stats", icon: ChartColumn },
 ];
 

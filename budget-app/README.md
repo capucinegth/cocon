@@ -72,6 +72,17 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 - **Objectifs** : création, versement, progression calculée en base, modification, suppression. Le total
   « mis de côté pour tes objectifs » suit leurs versements ; s'il diffère de l'épargne sur les comptes,
   une note l'explique (rien n'est recalculé).
+- **Mes papiers (Administratif)** : documents administratifs rangés en 4 catégories (Professionnel,
+  Santé, Impôts, Assurances). Ajout depuis le téléphone : **prendre une photo** (appareil photo direct),
+  choisir une photo ou un fichier ; plusieurs pages photographiées (ajout, reprise, ordre, suppression)
+  deviennent **un seul PDF**, assemblé sur l'appareil, photos redressées et réduites sans perdre en
+  lisibilité. Classement **proposé** d'après le nom du fichier (aucune IA, aucun service externe),
+  toujours modifiable avant d'enregistrer. Fiche : consulter / télécharger par **lien temporaire
+  (60 s)**, informations simples et typées (« à vérifier » ou « validée »), échéances (7, 30, 60 jours,
+  plus tard), modification, suppression (fichier puis fiche). Recherche locale sans accents (titre, type,
+  catégorie, année, informations validées) et filtres. **Rien n'est relié automatiquement au Budget.**
+  Stockage privé Supabase, RLS par utilisateur ; module isolé (`services/documents/*`,
+  `store/documents-store.tsx`, `lib/admin/*`), chargé seulement dans « Mes papiers ».
 - **Statistiques** : n'importe quel mois, sur tes comptes jour par jour, tendances — tout est recalculé
   automatiquement à chaque saisie.
 - **Paramètres** : Moi (prénom, mot de passe, déconnexion), Mes comptes, Catégories, Affichage (mode discret,

@@ -32,7 +32,19 @@ import { fileURLToPath } from "node:url";
 const API = process.env.SUPABASE_API_URL ?? "https://api.supabase.com/v1";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const migrationsDir = join(root, "supabase", "migrations");
-const COCON_TABLES = ["accounts", "budget_categories", "budgets", "categories", "profiles", "recurring_transactions", "savings_goals", "transactions"];
+const COCON_TABLES = [
+  "accounts",
+  "budget_categories",
+  "budgets",
+  "categories",
+  "document_deadlines",
+  "document_fields",
+  "documents",
+  "profiles",
+  "recurring_transactions",
+  "savings_goals",
+  "transactions",
+];
 
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
