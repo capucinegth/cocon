@@ -81,6 +81,12 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
   (60 s)**, informations simples et typées (« à vérifier » ou « validée »), échéances (7, 30, 60 jours,
   plus tard), modification, suppression (fichier puis fiche). Recherche locale sans accents (titre, type,
   catégorie, année, informations validées) et filtres. **Rien n'est relié automatiquement au Budget.**
+  **Scan** des photos sur l'appareil, sans service externe : la feuille est repérée automatiquement,
+  ses 4 coins s'ajustent au doigt (ou au clavier), la perspective est redressée et le rendu « Document »
+  (fond blanc, texte net, ombres effacées), « Couleur » ou « Original » est au choix ; chaque page reste
+  recadrable avant d'enregistrer. **Dossiers personnels** : créer, renommer (nom et icône), supprimer ;
+  un document est rangé dans un dossier en plus de sa catégorie (depuis l'import ou sa fiche, avec
+  création d'un dossier sur place) ; supprimer un dossier ne supprime jamais ses documents.
   Stockage privé Supabase, RLS par utilisateur ; module isolé (`services/documents/*`,
   `store/documents-store.tsx`, `lib/admin/*`), chargé seulement dans « Mes papiers ».
 - **Statistiques** : n'importe quel mois, sur tes comptes jour par jour, tendances — tout est recalculé

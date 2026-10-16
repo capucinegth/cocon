@@ -4,7 +4,7 @@
  */
 import { buildTextPdf } from "@/lib/admin/files";
 import { RepositoryError } from "@/services/repository";
-import type { AdminDocument, AdminState, DocumentDeadline, DocumentField } from "@/types/documents";
+import type { AdminDocument, AdminState, DocumentDeadline, DocumentField, DocumentFolder } from "@/types/documents";
 import { SIGNED_URL_SECONDS, type DocumentRepository } from "./repository";
 
 const DEMO_USER = "demo";
@@ -37,7 +37,7 @@ export function createDemoAdminState(today: string): { state: AdminState; files:
     demoDocument({ id: "doc-mutuelle", category: "sante", type: "mutuelle", title: "Attestation de mutuelle", fileName: "attestation_mutuelle_2026.pdf", documentDate: "2026-01-05", createdAt: "2026-05-12T08:00:00.000Z" }),
     demoDocument({ id: "doc-remb", category: "sante", type: "remboursement", title: "Remboursement · juillet 2026", fileName: "decompte_juillet_2026.pdf", documentDate: "2026-07-28", classificationStatus: "a_verifier", classificationSource: "nom_fichier", createdAt: "2026-09-10T08:00:00.000Z" }),
     demoDocument({ id: "doc-impot", category: "impots", type: "avis_imposition", title: "Avis d'imposition · 2026", fileName: "avis_impot_2026.pdf", periodYear: 2026, documentDate: "2026-08-04", createdAt: "2026-08-05T08:00:00.000Z" }),
-    demoDocument({ id: "doc-habitation", category: "assurances", type: "assurance_habitation", title: "Assurance habitation", fileName: "assurance_habitation.pdf", documentDate: "2025-10-01", createdAt: "2026-04-02T08:00:00.000Z" }),
+    demoDocument({ id: "doc-habitation", category: "assurances", type: "assurance_habitation", title: "Assurance habitation", fileName: "assurance_habitation.pdf", documentDate: "2025-10-01", folderId: "dossier-appartement", createdAt: "2026-04-02T08:00:00.000Z" }),
     demoDocument({ id: "doc-auto", category: "assurances", type: "assurance_auto", title: "Assurance automobile", fileName: "assurance_voiture.pdf", classificationStatus: "a_verifier", classificationSource: "nom_fichier", createdAt: "2026-09-12T08:00:00.000Z" }),
   ];
   const fields: DocumentField[] = [
@@ -56,10 +56,11 @@ export function createDemoAdminState(today: string): { state: AdminState; files:
     { id: "dl-habitation", documentId: "doc-habitation", label: "Échéance assurance habitation", dueDate: "2026-10-01", kind: "echeance" },
     { id: "dl-mutuelle", documentId: "doc-mutuelle", label: "Renouvellement mutuelle", dueDate: "2027-01-01", kind: "renouvellement" },
   ];
+  const folders: DocumentFolder[] = [{ id: "dossier-appartement", name: "Appartement", emoji: "🏠", createdAt: "2026-04-02T08:00:00.000Z" }];
   const files = new Map<string, Blob>(
     documents.map((doc) => [doc.filePath, pdf([doc.title, doc.fileName])]),
   );
-  return { state: { today, documents, fields, deadlines }, files };
+  return { state: { today, documents, fields, deadlines, folders }, files };
 }
 
 export function createDemoDocumentRepository(today: string): DocumentRepository {
@@ -90,5 +91,7 @@ export function createDemoDocumentRepository(today: string): DocumentRepository 
     deleteField: done,
     saveDeadline: done,
     deleteDeadline: done,
+    saveFolder: (folder) => Promise.resolve({ ...folder, name: folder.name.trim() }),
+    deleteFolder: done,
   };
 }

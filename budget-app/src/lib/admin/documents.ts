@@ -1,7 +1,7 @@
 /**
  * Lecture des documents (fonctions pures) : informations, période, recherche, échéances, résumé par catégorie.
  */
-import type { AdminDocument, AdminState, DocumentCategory, DocumentDeadline, DocumentField } from "@/types/documents";
+import type { AdminDocument, AdminState, DocumentCategory, DocumentDeadline, DocumentField, DocumentFolder } from "@/types/documents";
 import { addDays, formatMonth } from "../dates";
 import { formatMoney } from "../format";
 import { normalizeText } from "../text";
@@ -64,21 +64,46 @@ export function documentsToReview(documents: AdminDocument[]): AdminDocument[] {
 
 /**
  * Recherche locale, sans accents : chaque mot doit apparaître dans le titre, le type (et ses mots-clés),
- * la catégorie, l'année, la période, le nom du fichier, la description ou une information VALIDÉE.
+ * la catégorie, le dossier, l'année, la période, le nom du fichier, la description ou une information VALIDÉE.
  */
-export function searchDocuments(state: Pick<AdminState, "documents" | "fields">, query: string): AdminDocument[] {
+export function searchDocuments(state: Pick<AdminState, "documents" | "fields"> & { folders?: DocumentFolder[] }, query: string): AdminDocument[] {
   const words = normalizeText(query).split(/[^a-z0-9]+/).filter(Boolean);
   if (words.length === 0) return sortDocuments(state.documents);
   return sortDocuments(
     state.documents.filter((doc) => {
       const type = typeInfo(doc.type, doc.category);
       const validated = state.fields.filter((f) => f.documentId === doc.id && f.status === "valide").map((f) => formatFieldValue(f));
+      const folder = doc.folderId ? (state.folders?.find((f) => f.id === doc.folderId)?.name ?? "") : "";
       const haystack = normalizeText(
-        [doc.title, doc.description, doc.fileName, type.label, type.keywords, categoryInfo(doc.category).label, periodLabel(doc), documentYear(doc), doc.documentDate ?? "", ...validated].join(" "),
+        [doc.title, doc.description, doc.fileName, type.label, type.keywords, categoryInfo(doc.category).label, folder, periodLabel(doc), documentYear(doc), doc.documentDate ?? "", ...validated].join(" "),
       );
       return words.every((word) => haystack.includes(word));
     }),
   );
+}
+
+/* ------------------------------------------------------------------ Dossiers */
+
+export const MAX_FOLDER_NAME = 60;
+export const folderEmojis = ["📁", "🏠", "🚗", "💼", "🩺", "🎓", "👶", "🐾", "✈️", "🏦", "📜", "⭐"];
+
+/** Dossiers par ordre alphabétique (sans tenir compte des accents ni des majuscules). */
+export function sortFolders(folders: DocumentFolder[]): DocumentFolder[] {
+  return [...folders].sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
+}
+
+export function documentsInFolder(state: Pick<AdminState, "documents">, folderId: string): AdminDocument[] {
+  return sortDocuments(state.documents.filter((d) => d.folderId === folderId));
+}
+
+/** Problème du nom d'un dossier (vide, trop long, déjà pris par un autre dossier), ou `null`. */
+export function folderNameProblem(name: string, folders: DocumentFolder[], exceptId?: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return "Donne un nom à ce dossier.";
+  if (trimmed.length > MAX_FOLDER_NAME) return `${MAX_FOLDER_NAME} caractères au plus.`;
+  const key = trimmed.toLocaleLowerCase("fr");
+  if (folders.some((f) => f.id !== exceptId && f.name.trim().toLocaleLowerCase("fr") === key)) return "Un dossier porte déjà ce nom.";
+  return null;
 }
 
 export type DeadlineGroupId = "late" | "week" | "month" | "twoMonths" | "later";

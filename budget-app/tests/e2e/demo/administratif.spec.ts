@@ -15,6 +15,28 @@ async function photo(page: Page, label: string, width = 900, height = 1200): Pro
   return { name: `IMG_${label.replace(/\W/g, "")}.jpg`, mimeType: "image/jpeg", buffer };
 }
 
+/** Photo d'une feuille posée de travers sur une table sombre (comme une vraie photo de papier). */
+async function tablePhoto(page: Page, label: string): Promise<{ name: string; mimeType: string; buffer: Buffer }> {
+  const other = await page.context().newPage();
+  await other.setViewportSize({ width: 900, height: 1200 });
+  await other.setContent(
+    `<body style="margin:0;height:1200px;background:#3b332d;display:grid;place-items:center;overflow:hidden">` +
+      `<div style="width:560px;height:780px;background:#fbf8f1;transform:rotate(7deg);font:30px sans-serif;padding:50px;box-sizing:border-box">${label}<hr><p>Texte du document</p></div></body>`,
+  );
+  const buffer = await other.screenshot({ type: "jpeg", quality: 85 });
+  await other.close();
+  return { name: `IMG_${label.replace(/\W/g, "")}.jpg`, mimeType: "image/jpeg", buffer };
+}
+
+/** Valide le détourage proposé pour chaque nouvelle photo. */
+async function validateScans(page: Page, count = 1) {
+  for (let i = 0; i < count; i += 1) {
+    await expect(sheet(page).getByRole("heading", { name: /Ajuste les bords de la page/ })).toBeVisible();
+    await sheet(page).getByRole("button", { name: /^(Valider la page|Remplacer la page)$/ }).click();
+  }
+  await expect(sheet(page).getByRole("heading", { name: /Ajuste les bords de la page/ })).toHaveCount(0);
+}
+
 const pdf = (name: string, size = 0) => {
   const head = Buffer.from("%PDF-1.4\n% document de test\n%%EOF\n");
   return { name, mimeType: "application/pdf", buffer: size > head.length ? Buffer.concat([head, Buffer.alloc(size - head.length)]) : head };
@@ -96,11 +118,13 @@ test.describe("Ajouter un document", () => {
     const chooser = await importFrom(page, "Prendre une photo", await photo(page, "Attestation employeur"));
     // L'appareil photo arrière est demandé directement.
     expect(await chooser.element().getAttribute("capture")).toBe("environment");
+    await validateScans(page);
     await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
     await sheet(page).getByRole("button", { name: "Agrandir la page 1" }).click();
     await expect(sheet(page).getByRole("img", { name: "Page 1 sur 1" })).toBeVisible();
     await sheet(page).getByRole("button", { name: "Fermer l'aperçu" }).click();
     await importFrom(page, "Reprendre la photo", await photo(page, "Attestation reprise"));
+    await validateScans(page);
     await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
     await expectNoA11yViolations(page);
 
@@ -121,8 +145,12 @@ test.describe("Ajouter un document", () => {
     await page.goto("/administratif");
     await openImport(page);
     await importFrom(page, "Prendre une photo", await photo(page, "Page A"));
+    await validateScans(page);
     await importFrom(page, "Ajouter une page", await photo(page, "Page B"));
+    await validateScans(page);
     await importFrom(page, "Depuis mes photos", [await photo(page, "Page C"), await photo(page, "Page D")]);
+    await expect(sheet(page).getByRole("heading", { name: /Photo 1 sur 2/ })).toBeVisible();
+    await validateScans(page, 2);
     for (const label of ["Page 1/4", "Page 2/4", "Page 3/4", "Page 4/4"]) await expect(sheet(page).getByText(label)).toBeVisible();
     await sheet(page).getByRole("button", { name: "Placer la page 1 après" }).click();
     await sheet(page).getByRole("button", { name: "Supprimer la page 4" }).click();
@@ -181,12 +209,168 @@ test.describe("Ajouter un document", () => {
     // Toujours au choix de la source : rien n'a été ajouté.
     await expect(sheet(page).getByRole("button", { name: "Prendre une photo" })).toBeVisible();
 
+    // Une photo écartée au détourage n'ajoute rien.
+    await importFrom(page, "Choisir une photo", await photo(page, "Ecartee"));
+    await sheet(page).getByRole("button", { name: "Écarter" }).click();
+    await expect(sheet(page).getByRole("button", { name: "Prendre une photo" })).toBeVisible();
+
     await importFrom(page, "Choisir une photo", await photo(page, "A annuler"));
+    await validateScans(page);
     await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
     await sheet(page).getByRole("button", { name: "Annuler" }).click();
     await expect(sheet(page).getByRole("button", { name: "Prendre une photo" })).toBeVisible();
     await sheet(page).getByRole("button", { name: "Fermer" }).click();
     await expect(page.getByRole("button", { name: /Document du/ })).toHaveCount(0);
+  });
+});
+
+test.describe("Scan d'une photo", () => {
+  test("feuille de travers sur une table : détourée, redressée, rendu document, recadrage", async ({ page }) => {
+    await page.goto("/administratif");
+    await openImport(page);
+    await importFrom(page, "Prendre une photo", await tablePhoto(page, "Avis de soins"));
+    await expect(sheet(page).getByText("Cocon a repéré la feuille")).toBeVisible();
+    await expect(sheet(page).getByRole("radio", { name: "Document" })).toHaveAttribute("aria-checked", "true");
+
+    // Les coins proposés sont sur la feuille, pas aux coins de la photo.
+    const frame = await sheet(page).getByRole("img", { name: "Photo à détourer" }).boundingBox();
+    const corner = await sheet(page).getByTestId("scan-corner-0").boundingBox();
+    expect(frame && corner).toBeTruthy();
+    const relX = (corner!.x + corner!.width / 2 - frame!.x) / frame!.width;
+    const relY = (corner!.y + corner!.height / 2 - frame!.y) / frame!.height;
+    expect(relX).toBeGreaterThan(0.12);
+    expect(relY).toBeGreaterThan(0.08);
+    await expectNoA11yViolations(page);
+
+    // Coin déplacé au clavier, puis retour aux bords repérés.
+    await sheet(page).getByTestId("scan-corner-0").focus();
+    await page.keyboard.press("Shift+ArrowLeft");
+    await expect(sheet(page).getByRole("button", { name: "Bords repérés" })).toBeVisible();
+    await sheet(page).getByRole("button", { name: "Bords repérés" }).click();
+    await expect(sheet(page).getByRole("button", { name: "Bords repérés" })).toHaveCount(0);
+
+    await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+    await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
+    // La page redressée a les proportions de la feuille (560 × 780), pas celles de la photo (900 × 1200).
+    const ratio = await sheet(page)
+      .locator("ol img")
+      .first()
+      .evaluate((img: HTMLImageElement) => img.naturalWidth / img.naturalHeight);
+    expect(ratio).toBeGreaterThan(0.66);
+    expect(ratio).toBeLessThan(0.78);
+    // Rendu « document » : le fond de la table a disparu, la page est blanche.
+    const corners = await sheet(page)
+      .locator("ol img")
+      .first()
+      .evaluate((img: HTMLImageElement) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(img, 0, 0);
+        const at = (x: number, y: number) => context.getImageData(x, y, 1, 1).data[0];
+        const m = 12;
+        return [at(m, m), at(canvas.width - m, m), at(canvas.width - m, canvas.height - m), at(m, canvas.height - m)];
+      });
+    for (const value of corners) expect(value).toBeGreaterThan(200);
+
+    // Recadrer une page déjà ajoutée : rendu « Couleur ».
+    await sheet(page).getByRole("button", { name: "Recadrer la page 1" }).click();
+    await sheet(page).getByRole("radio", { name: "Couleur" }).click();
+    await sheet(page).getByRole("button", { name: "Toute la photo" }).click();
+    await sheet(page).getByRole("button", { name: "Valider", exact: true }).click();
+    await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
+    const fullRatio = await sheet(page)
+      .locator("ol img")
+      .first()
+      .evaluate((img: HTMLImageElement) => img.naturalWidth / img.naturalHeight);
+    expect(fullRatio).toBeCloseTo(900 / 1200, 1);
+  });
+});
+
+test.describe("Mes dossiers", () => {
+  test("créer, ouvrir, ranger un document, renommer, supprimer (documents gardés)", async ({ page }) => {
+    await page.goto("/administratif");
+    const folders = page.locator("section").filter({ has: page.getByRole("heading", { name: "Mes dossiers" }) });
+    await expect(folders.getByRole("link", { name: /Appartement/ })).toContainText("1 document");
+
+    // Création : nom déjà pris refusé (sans tenir compte des majuscules), puis nouveau dossier.
+    await folders.getByRole("button", { name: /Nouveau dossier/ }).click();
+    await expect(sheet(page).getByRole("heading", { name: "Nouveau dossier" })).toBeVisible();
+    await sheet(page).getByLabel("Nom du dossier").fill(" appartement ");
+    await expect(sheet(page).getByText("Un dossier porte déjà ce nom.")).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: "Créer le dossier" })).toBeDisabled();
+    await sheet(page).getByLabel("Nom du dossier").fill("Voiture");
+    await sheet(page).getByRole("radio", { name: "🚗" }).click();
+    await expectNoA11yViolations(page);
+    await sheet(page).getByRole("button", { name: "Créer le dossier" }).click();
+    await expect(page.getByText("Dossier « Voiture » créé")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("🚗 Voiture");
+    await expect(page.getByText("Ce dossier est vide")).toBeVisible();
+    await expectNoA11yViolations(page);
+
+    // Ranger un document existant depuis sa fiche : il garde sa catégorie.
+    // (Mode démo : données en mémoire, on navigue par les liens de l'application.)
+    await page.getByRole("link", { name: "Mes papiers" }).filter({ visible: true }).first().click();
+    await page.getByRole("link", { name: /Assurances/ }).click();
+    await page.getByRole("button", { name: /Assurance automobile/ }).click();
+    await sheet(page).getByRole("combobox", { name: "Dossier", exact: true }).selectOption({ label: "🚗 Voiture" });
+    await expect(page.getByText("Rangé dans « Voiture »")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: /Assurance automobile/ })).toBeVisible();
+
+    // Ajouter un document directement dans le dossier ouvert.
+    await page.getByRole("link", { name: "Mes papiers" }).filter({ visible: true }).first().click();
+    await folders.getByRole("link", { name: /Voiture/ }).click();
+    await expect(page.getByRole("button", { name: /Assurance automobile/ })).toBeVisible();
+    await openImport(page);
+    await importFrom(page, "Choisir un fichier", pdf("carte_grise.pdf"));
+    await expect(sheet(page).getByRole("combobox", { name: "Dossier", exact: true }).locator("option:checked")).toHaveText("🚗 Voiture");
+    await sheet(page).getByRole("button", { name: /Assurances/ }).click();
+    await sheet(page).getByLabel("Titre").fill("Carte grise");
+    await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByText("« Carte grise » ajouté dans Assurances et « Voiture »")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Carte grise/ })).toBeVisible();
+    await expect(page.getByText("Dossier · 2 documents")).toBeVisible();
+
+    // La recherche de l'accueil trouve par nom de dossier.
+    await page.getByRole("link", { name: "Mes papiers" }).filter({ visible: true }).first().click();
+    await expect(page.getByRole("heading", { level: 1, name: "Mes papiers" })).toBeVisible();
+    await page.getByRole("searchbox", { name: "Rechercher un document" }).fill("voiture");
+    const results = page.locator("section").filter({ has: page.getByRole("heading", { name: "Résultats" }) });
+    await expect(results.getByRole("button", { name: /Carte grise/ })).toBeVisible();
+    await page.getByRole("button", { name: "Effacer la recherche" }).click();
+
+    // Renommer, puis supprimer : les documents restent dans leurs catégories.
+    await folders.getByRole("link", { name: /Voiture/ }).click();
+    await page.getByRole("button", { name: "Modifier le dossier" }).click();
+    await sheet(page).getByLabel("Nom du dossier").fill("Ma voiture");
+    await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Ma voiture");
+    await page.getByRole("button", { name: "Modifier le dossier" }).click();
+    await sheet(page).getByRole("button", { name: "Supprimer le dossier" }).click();
+    await expect(sheet(page).getByText(/Les 2 documents qu'il contient restent dans Mes papiers/)).toBeVisible();
+    await sheet(page).getByRole("group").getByRole("button", { name: "Supprimer le dossier" }).click();
+    await expect(page.getByText("Dossier supprimé, documents conservés")).toBeVisible();
+    await expect(page).toHaveURL(/\/administratif$/);
+    await expect(folders.getByRole("link", { name: /voiture/i })).toHaveCount(0);
+    await page.getByRole("link", { name: /Assurances/ }).click();
+    await expect(page.getByRole("button", { name: /Carte grise/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Assurance automobile/ })).toBeVisible();
+  });
+
+  test("nouveau dossier créé depuis l'import, document rangé dedans", async ({ page }) => {
+    await page.goto("/administratif");
+    await openImport(page);
+    await importFrom(page, "Choisir un fichier", pdf("avis_impot_2026.pdf"));
+    await sheet(page).getByRole("button", { name: "Nouveau dossier" }).click();
+    await sheet(page).getByLabel("Nom du nouveau dossier").fill("Impôts de la famille");
+    await sheet(page).getByRole("button", { name: "Créer le dossier" }).click();
+    await expect(sheet(page).getByRole("combobox", { name: "Dossier", exact: true }).locator("option:checked")).toHaveText("📁 Impôts de la famille");
+    await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByText(/ajouté dans Impôts et « Impôts de la famille »/)).toBeVisible();
+    const folders = page.locator("section").filter({ has: page.getByRole("heading", { name: "Mes dossiers" }) });
+    await expect(folders.getByRole("link", { name: /Impôts de la famille/ })).toContainText("1 document");
   });
 });
 

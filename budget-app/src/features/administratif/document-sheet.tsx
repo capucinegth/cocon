@@ -20,6 +20,7 @@ import { useDocuments } from "@/store/documents-store";
 import { useUI } from "@/store/ui-store";
 import type { AdminDocument, DeadlineKind, DocumentField } from "@/types/documents";
 import { DocumentForm, formProblem, toDocumentFields, valuesFromDocument, type DocumentFormValues } from "./document-form";
+import { FolderPicker } from "./folder-picker";
 import { downloadFile, viewFile } from "./open-file";
 
 const sizeLabel = (bytes: number) =>
@@ -240,6 +241,32 @@ function Deadlines({ document }: { document: AdminDocument }) {
   );
 }
 
+/** Ranger le document dans un dossier (ou l'en sortir), enregistré aussitôt. */
+function FolderPlacement({ document }: { document: AdminDocument }) {
+  const { folders, updateDocument } = useDocuments();
+  const { showToast } = useUI();
+  const move = useAsyncAction();
+
+  async function change(folderId: string) {
+    const ok = await move.run(() => updateDocument({ ...document, folderId: folderId || undefined }));
+    if (!ok) return;
+    if (!folderId) return showToast("Sorti du dossier");
+    // Un dossier tout juste créé n'est pas encore dans `folders` ici.
+    const folder = folders.find((f) => f.id === folderId);
+    showToast(folder ? `Rangé dans « ${folder.name} »` : "Rangé dans le nouveau dossier");
+  }
+
+  return (
+    <section aria-labelledby="dossier-title">
+      <h3 id="dossier-title" className="mb-2.5 text-sm font-semibold text-muted">
+        Dossier
+      </h3>
+      <FolderPicker value={document.folderId ?? ""} onChange={(folderId) => void change(folderId)} disabled={move.pending} />
+      <FormError message={move.error} className="mt-2" />
+    </section>
+  );
+}
+
 function DocumentDetail({ documentId }: { documentId: string }) {
   const { documents, today, fileUrl, updateDocument, deleteDocument, closeSheet } = useDocuments();
   const { showToast } = useUI();
@@ -254,6 +281,13 @@ function DocumentDetail({ documentId }: { documentId: string }) {
   const category = categoryInfo(document.category);
   const type = typeInfo(document.type, document.category);
   const when = periodLabel(document);
+
+  /** Le formulaire repart toujours de la fiche actuelle (dossier changé entre-temps, classement confirmé…). */
+  function startEditing() {
+    setValues(valuesFromDocument(document!));
+    save.clearError();
+    setEditing(true);
+  }
 
   async function submitEdit() {
     const problem = formProblem(values!);
@@ -328,7 +362,7 @@ function DocumentDetail({ documentId }: { documentId: string }) {
               <Check size={16} aria-hidden />
               C&apos;est correct
             </Button>
-            <Button variant="white" size="sm" onClick={() => setEditing(true)}>
+            <Button variant="white" size="sm" onClick={startEditing}>
               Modifier
             </Button>
           </div>
@@ -336,11 +370,12 @@ function DocumentDetail({ documentId }: { documentId: string }) {
         </div>
       )}
 
+      <FolderPlacement document={document} />
       <Informations document={document} />
       <Deadlines document={document} />
 
       <div className="flex flex-col gap-2 border-t border-line pt-4">
-        <Button variant="ghost" onClick={() => setEditing(true)} className="justify-start">
+        <Button variant="ghost" onClick={startEditing} className="justify-start">
           <Pencil size={16} aria-hidden />
           Modifier la fiche
         </Button>

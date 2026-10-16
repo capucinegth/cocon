@@ -1,7 +1,7 @@
 /** Lignes Supabase ⇄ modèle du module Administratif (centimes ⇄ euros). */
 import { fieldDefinitions } from "@/lib/admin/catalog";
 import { fromCents, toCents } from "@/services/mappers";
-import type { AdminDocument, DocumentDeadline, DocumentField } from "@/types/documents";
+import type { AdminDocument, DocumentDeadline, DocumentField, DocumentFolder } from "@/types/documents";
 
 export interface DocumentRow {
   id: string;
@@ -19,6 +19,14 @@ export interface DocumentRow {
   period_month: number | null;
   classification_status: AdminDocument["classificationStatus"];
   classification_source: AdminDocument["classificationSource"];
+  folder_id: string | null;
+  created_at: string;
+}
+
+export interface FolderRow {
+  id: string;
+  name: string;
+  emoji: string;
   created_at: string;
 }
 
@@ -44,7 +52,8 @@ export interface DeadlineRow {
 }
 
 export const DOCUMENT_COLUMNS =
-  "id, category, document_type, title, description, file_path, file_name, mime_type, file_size_bytes, page_count, document_date, period_year, period_month, classification_status, classification_source, created_at";
+  "id, category, document_type, title, description, file_path, file_name, mime_type, file_size_bytes, page_count, document_date, period_year, period_month, classification_status, classification_source, folder_id, created_at";
+export const FOLDER_COLUMNS = "id, name, emoji, created_at";
 export const FIELD_COLUMNS = "id, document_id, field_key, value_text, value_amount_cents, value_date, status, source, validated_at";
 export const DEADLINE_COLUMNS = "id, document_id, label, due_date, kind, done_at";
 
@@ -65,6 +74,7 @@ export function documentFromRow(row: DocumentRow): AdminDocument {
     periodMonth: row.period_month ?? undefined,
     classificationStatus: row.classification_status,
     classificationSource: row.classification_source,
+    folderId: row.folder_id ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -81,6 +91,7 @@ export function documentToRow(doc: AdminDocument) {
     period_month: doc.periodYear ? (doc.periodMonth ?? null) : null,
     classification_status: doc.classificationStatus,
     classification_source: doc.classificationSource,
+    folder_id: doc.folderId ?? null,
   };
 }
 
@@ -125,6 +136,15 @@ export function fieldToRow(field: DocumentField) {
     source: field.source,
     validated_at: field.status === "valide" ? (field.validatedAt ?? new Date().toISOString()) : null,
   };
+}
+
+export function folderFromRow(row: FolderRow): DocumentFolder {
+  return { id: row.id, name: row.name, emoji: row.emoji, createdAt: row.created_at };
+}
+
+/** Champs d'un dossier (jamais user_id : la base le donne). */
+export function folderToRow(folder: DocumentFolder) {
+  return { id: folder.id, name: folder.name.trim(), emoji: folder.emoji };
 }
 
 export function deadlineFromRow(row: DeadlineRow): DocumentDeadline {

@@ -8,6 +8,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fieldDefinitions } from "@/lib/admin/catalog";
+import { folderNameProblem } from "@/lib/admin/documents";
 import { uuid } from "@/lib/ids";
 import { todayInParis } from "@/lib/paris-time";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -19,12 +20,15 @@ import { createSupabaseDocumentRepository } from "@/services/documents/supabase-
 import { errorMessage, isSessionError, RepositoryError } from "@/services/repository";
 import { useSession } from "@/store/session-store";
 import type { LoadStatus } from "@/store/budget-store";
-import type { AdminDocument, AdminState, DocumentDeadline, DocumentField } from "@/types/documents";
+import type { AdminDocument, AdminState, DocumentDeadline, DocumentField, DocumentFolder } from "@/types/documents";
 
 /** Feuilles du module (une seule ouverte à la fois, indépendantes de celles du Budget). */
 export type AdminSheet =
-  | { type: "import" }
+  /** Import, éventuellement directement dans un dossier. */
+  | { type: "import"; folderId?: string }
   | { type: "document"; documentId: string }
+  /** Nouveau dossier (sans identifiant) ou dossier à renommer / supprimer. */
+  | { type: "folder"; folderId?: string }
   | null;
 
 /** Information à enregistrer : sans identifiant pour une nouvelle. */
@@ -44,6 +48,8 @@ interface DocumentsContextValue extends AdminState {
   deleteField: (field: DocumentField) => Promise<void>;
   saveDeadline: (deadline: Omit<DocumentDeadline, "id"> & { id?: string }) => Promise<void>;
   deleteDeadline: (deadline: DocumentDeadline) => Promise<void>;
+  saveFolder: (input: { id?: string; name: string; emoji: string }) => Promise<DocumentFolder>;
+  deleteFolder: (folder: DocumentFolder) => Promise<void>;
   sheet: AdminSheet;
   sheetOpen: boolean;
   sheetSession: number;
@@ -57,7 +63,7 @@ function createRepository(): DocumentRepository {
   return dataSource === "supabase" ? createSupabaseDocumentRepository(getSupabaseBrowserClient()) : createDemoDocumentRepository(appConfig.demoToday);
 }
 
-const emptyState = (today: string): AdminState => ({ today, documents: [], fields: [], deadlines: [] });
+const emptyState = (today: string): AdminState => ({ today, documents: [], fields: [], deadlines: [], folders: [] });
 
 export function DocumentsProvider({ children }: { children: ReactNode }) {
   const { handleSessionExpired } = useSession();
@@ -224,6 +230,34 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
     [commit, repository],
   );
 
+  const saveFolder = useCallback<DocumentsContextValue["saveFolder"]>(
+    (input) => {
+      const problem = folderNameProblem(input.name, state.folders, input.id);
+      if (problem) return Promise.reject(new RepositoryError(problem, "validation"));
+      const existing = input.id ? state.folders.find((f) => f.id === input.id) : undefined;
+      const folder: DocumentFolder = { id: input.id ?? uuid(), name: input.name.trim(), emoji: input.emoji, createdAt: existing?.createdAt ?? new Date().toISOString() };
+      return commit(
+        () => repository.saveFolder(folder),
+        (current, saved) => ({ ...current, folders: [...current.folders.filter((f) => f.id !== saved.id), saved] }),
+      );
+    },
+    [commit, repository, state.folders],
+  );
+
+  /** Le dossier disparaît ; ses documents restent, simplement sortis du dossier. */
+  const deleteFolder = useCallback(
+    (folder: DocumentFolder) =>
+      commit(
+        () => repository.deleteFolder(folder.id),
+        (current) => ({
+          ...current,
+          folders: current.folders.filter((f) => f.id !== folder.id),
+          documents: current.documents.map((d) => (d.folderId === folder.id ? { ...d, folderId: undefined } : d)),
+        }),
+      ),
+    [commit, repository],
+  );
+
   const openSheet = useCallback((next: Exclude<AdminSheet, null>) => {
     setSheetSession((n) => n + 1);
     setSheet(next);
@@ -247,6 +281,8 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       deleteField,
       saveDeadline,
       deleteDeadline,
+      saveFolder,
+      deleteFolder,
       sheet,
       sheetOpen,
       sheetSession,
@@ -268,6 +304,8 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       deleteField,
       saveDeadline,
       deleteDeadline,
+      saveFolder,
+      deleteFolder,
       sheet,
       sheetOpen,
       sheetSession,
