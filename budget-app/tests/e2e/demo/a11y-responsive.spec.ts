@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoA11yViolations, expectNoHorizontalOverflow, expectNothingOffscreen, openAdd, openMoreOptions, sheet } from "../support";
 
-const pages = ["/", "/budget", "/transactions", "/objectifs", "/statistiques", "/parametres", "/connexion", "/mot-de-passe-oublie"];
+const pages = ["/", "/budget", "/transactions", "/objectifs", "/administratif", "/administratif/professionnel", "/administratif/echeances", "/statistiques", "/parametres", "/connexion", "/mot-de-passe-oublie"];
 
 test("aucune violation d'accessibilité sur toutes les pages", async ({ page }) => {
   for (const path of pages) {
@@ -20,7 +20,7 @@ const widths = [320, 375, 390, 430, 768, 1024, 1280, 1440];
 
 test("aucun débordement ni élément hors écran, de 320 à 1440 px", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Les largeurs sont parcourues une seule fois.");
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   for (const width of widths) {
     await page.setViewportSize({ width, height: width < 768 ? 800 : 900 });
     for (const path of pages) {

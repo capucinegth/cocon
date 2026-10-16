@@ -15,6 +15,7 @@ const navTargets = {
   "/budget": /^Budget$/,
   "/transactions": /^(Dépenses et revenus|Dépenses)$/,
   "/objectifs": /^Objectifs$/,
+  "/administratif": /^(Administratif|Papiers)$/,
   "/statistiques": /^(Statistiques|Stats)$/,
   "/parametres": /^Paramètres$/,
 } as const;
