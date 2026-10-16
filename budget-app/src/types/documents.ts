@@ -28,7 +28,17 @@ export interface AdminDocument {
   /** Classement proposé par Cocon : « à vérifier » tant que l'utilisateur ne l'a pas confirmé. */
   classificationStatus: "a_verifier" | "confirme";
   classificationSource: "nom_fichier" | "utilisateur";
+  /** Dossier personnel où le document est rangé (en plus de sa catégorie). */
+  folderId?: string;
   /** Horodatage ISO complet. */
+  createdAt: string;
+}
+
+/** Dossier créé par l'utilisateur. Le supprimer ne supprime jamais les documents qu'il contient. */
+export interface DocumentFolder {
+  id: string;
+  name: string;
+  emoji: string;
   createdAt: string;
 }
 
@@ -69,4 +79,5 @@ export interface AdminState {
   documents: AdminDocument[];
   fields: DocumentField[];
   deadlines: DocumentDeadline[];
+  folders: DocumentFolder[];
 }

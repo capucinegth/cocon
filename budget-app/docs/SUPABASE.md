@@ -119,6 +119,42 @@ drop table public.document_fields;
 drop table public.documents;
 ```
 
+### Mes papiers — dossiers personnels
+
+`20261017090000_cocon_dossiers.sql` — migration **additive**, à appliquer dans le SQL Editor AVANT de
+fusionner le code (sans effet sur la version en service, qui n'utilise pas ces éléments) :
+- nouvelle table `document_folders` (nom de 1 à 60 caractères, unique par utilisateur sans tenir compte
+  des majuscules ni des espaces autour, icône) ; RLS : 4 politiques limitées au propriétaire, rien pour
+  les visiteurs ;
+- nouvelle colonne **facultative** `documents.folder_id` : vide pour tous les documents existants
+  (aucun n'est déplacé ni modifié). Clé étrangère composite `(folder_id, user_id)` : un document ne peut
+  être rangé que dans un dossier du même utilisateur. Supprimer un dossier **ne supprime jamais ses
+  documents** : `on delete set null (folder_id)` vide seulement ce champ.
+
+Le scan des photos (détourage, redressement, rendu « document ») se fait entièrement sur l'appareil :
+il ne demande aucune migration et n'envoie rien à un service externe.
+
+Vérification, en lecture seule, à lancer AVANT puis APRÈS (une seule ligne de résultat) :
+```sql
+select
+  (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'document_folders' and c.relrowsecurity) as dossiers_rls,
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'document_folders') as dossiers_politiques,
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and table_name = 'documents' and column_name = 'folder_id') as colonne_dossier,
+  (select count(*) from public.documents) as documents;
+```
+Attendu : avant `0 · 0 · 0 · N`, après `1 · 4 · 1 · N` — le même nombre `N` de documents.
+
+Retour arrière, seulement si nécessaire (les documents et leurs fichiers sont conservés ; seuls les
+dossiers et le rangement des documents dans ces dossiers sont perdus) :
+```sql
+alter table public.documents drop constraint documents_folder_fkey;
+drop index public.documents_user_folder_idx;
+alter table public.documents drop column folder_id;
+drop table public.document_folders;
+```
+
 > Suppression d'un compte utilisateur : la cascade efface ses fiches, mais les fichiers du Storage
 > doivent être supprimés via l'API Storage (dossier `<user_id>/`) — à prévoir avant toute suppression de compte.
 

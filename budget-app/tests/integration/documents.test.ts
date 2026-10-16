@@ -146,3 +146,40 @@ suite("module Administratif (pile Supabase locale)", () => {
     await expect(repoB.saveDeadline({ ...deadline, id: uuid(), label: "Intrus" })).rejects.toBeInstanceOf(RepositoryError);
   });
 });
+
+suite("dossiers personnels (pile Supabase locale)", () => {
+  it("A crée, renomme un dossier et y range un document ; B ne voit rien et ne peut pas y ranger le sien", async () => {
+    const { repoA, repoB } = await setup();
+    const folder = await repoA.saveFolder({ id: uuid(), name: "  Appartement ", emoji: "🏠", createdAt: "" });
+    expect(folder).toMatchObject({ name: "Appartement", emoji: "🏠" });
+    const doc = await importFor(repoA, "Bail d'Alice");
+    await repoA.updateDocument({ ...doc, folderId: folder.id });
+
+    let state = await repoA.load(today);
+    expect(state.folders.map((f) => f.name)).toEqual(["Appartement"]);
+    expect(state.documents.find((d) => d.id === doc.id)?.folderId).toBe(folder.id);
+
+    const renamed = await repoA.saveFolder({ ...folder, name: "Mon appartement" });
+    expect(renamed.id).toBe(folder.id);
+    expect((await repoA.load(today)).folders.map((f) => f.name)).toEqual(["Mon appartement"]);
+
+    // Même nom (majuscules près) : refusé clairement.
+    await expect(repoA.saveFolder({ id: uuid(), name: "MON APPARTEMENT", emoji: "📁", createdAt: "" })).rejects.toThrow(/existe déjà/);
+
+    // B : rien de visible, ni renommage, ni rangement de son document dans le dossier de A.
+    expect((await repoB.load(today)).folders).toEqual([]);
+    await expect(repoB.deleteFolder(folder.id)).rejects.toThrow(RepositoryError);
+    const docB = await importFor(repoB, "Facture de Bob");
+    await expect(repoB.updateDocument({ ...docB, folderId: folder.id })).rejects.toThrow(RepositoryError);
+    await expect(repoB.saveFolder({ ...folder, name: "Piraté" })).rejects.toThrow(RepositoryError);
+    expect((await repoA.load(today)).folders.map((f) => f.name)).toEqual(["Mon appartement"]);
+
+    // A supprime le dossier : le document reste, son fichier aussi.
+    await repoA.deleteFolder(folder.id);
+    state = await repoA.load(today);
+    expect(state.folders).toEqual([]);
+    const kept = state.documents.find((d) => d.id === doc.id);
+    expect(kept?.folderId).toBeUndefined();
+    expect((await fetch(await repoA.fileUrl(kept!, "view"))).status).toBe(200);
+  });
+});

@@ -7,16 +7,20 @@ import {
   DEADLINE_COLUMNS,
   DOCUMENT_COLUMNS,
   FIELD_COLUMNS,
+  FOLDER_COLUMNS,
   deadlineFromRow,
   deadlineToRow,
   documentFromRow,
   documentToRow,
   fieldFromRow,
   fieldToRow,
+  folderFromRow,
+  folderToRow,
   newDocumentToRow,
   type DeadlineRow,
   type DocumentRow,
   type FieldRow,
+  type FolderRow,
 } from "./mappers";
 import { SIGNED_URL_SECONDS, type DocumentRepository } from "./repository";
 
@@ -62,16 +66,18 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
     source: "supabase",
 
     async load(today) {
-      const [documents, fields, deadlines] = await Promise.all([
+      const [documents, fields, deadlines, folders] = await Promise.all([
         must<DocumentRow[]>(client.from("documents").select(DOCUMENT_COLUMNS).order("created_at", { ascending: false }).limit(2000), "charger tes documents"),
         must<FieldRow[]>(client.from("document_fields").select(FIELD_COLUMNS).limit(10000), "charger tes documents"),
         must<DeadlineRow[]>(client.from("document_deadlines").select(DEADLINE_COLUMNS).order("due_date").limit(5000), "charger tes échéances"),
+        must<FolderRow[]>(client.from("document_folders").select(FOLDER_COLUMNS).order("name").limit(500), "charger tes dossiers"),
       ]);
       return {
         today,
         documents: documents.map(documentFromRow),
         fields: fields.map(fieldFromRow),
         deadlines: deadlines.map(deadlineFromRow),
+        folders: folders.map(folderFromRow),
       };
     },
 
@@ -145,6 +151,20 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
 
     async deleteDeadline(deadlineId) {
       await must(client.from("document_deadlines").delete().eq("id", deadlineId), "supprimer l'échéance");
+    },
+
+    async saveFolder(folder) {
+      const saved = await must<FolderRow>(
+        client.from("document_folders").upsert(folderToRow(folder)).select(FOLDER_COLUMNS).single(),
+        "enregistrer le dossier",
+      );
+      return folderFromRow(saved);
+    },
+
+    async deleteFolder(folderId) {
+      // Les documents du dossier restent : la base vide seulement leur folder_id (on delete set null).
+      const rows = await must<unknown[]>(client.from("document_folders").delete().eq("id", folderId).select("id"), "supprimer le dossier");
+      if (!rows || rows.length === 0) throw new RepositoryError("Ce dossier n'existe plus.", "conflict");
     },
   };
 }

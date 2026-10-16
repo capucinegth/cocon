@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { defaultType, documentCategories, typeInfo, typesOf } from "@/lib/admin/catalog";
 import type { Classification } from "@/lib/admin/classify";
 import type { AdminDocument, DocumentCategory } from "@/types/documents";
+import { FolderPicker } from "./folder-picker";
 
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
@@ -18,10 +19,12 @@ export interface DocumentFormValues {
   periodYear: string;
   periodMonth: string;
   description: string;
+  /** Dossier personnel (« » : aucun). */
+  folderId: string;
 }
 
-export function emptyValues(title = ""): DocumentFormValues {
-  return { title, category: null, type: "", documentDate: "", periodYear: "", periodMonth: "", description: "" };
+export function emptyValues(title = "", folderId = ""): DocumentFormValues {
+  return { title, category: null, type: "", documentDate: "", periodYear: "", periodMonth: "", description: "", folderId };
 }
 
 export function valuesFromClassification(classification: Classification): DocumentFormValues {
@@ -43,6 +46,7 @@ export function valuesFromDocument(doc: AdminDocument): DocumentFormValues {
     periodYear: doc.periodYear ? String(doc.periodYear) : "",
     periodMonth: doc.periodMonth ? String(doc.periodMonth) : "",
     description: doc.description,
+    folderId: doc.folderId ?? "",
   };
 }
 
@@ -58,6 +62,7 @@ export function toDocumentFields(values: DocumentFormValues) {
     periodYear,
     periodMonth: period === "month" && periodYear && values.periodMonth ? Number(values.periodMonth) : undefined,
     description: values.description.trim(),
+    folderId: values.folderId || undefined,
   };
 }
 
@@ -150,6 +155,10 @@ export function DocumentForm({
           </div>
         </FormField>
       )}
+
+      <FormField label="Dossier" hint="facultatif" as="div">
+        <FolderPicker value={values.folderId} onChange={(folderId) => set({ folderId })} />
+      </FormField>
 
       <label className="block">
         <span className="mb-2.5 block text-sm font-semibold text-muted">
