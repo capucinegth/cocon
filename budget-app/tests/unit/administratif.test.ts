@@ -117,7 +117,7 @@ const deadlines: DocumentDeadline[] = [
   { id: "d5", documentId: "auto", label: "Déjà traitée", dueDate: "2026-10-18", kind: "echeance", doneAt: "2026-10-15T08:00:00Z" },
   { id: "d6", documentId: "auto", label: "Dans 45 jours", dueDate: "2026-11-30", kind: "autre" },
 ];
-const state: AdminState = { today, documents, fields, deadlines };
+const state: AdminState = { today, documents, fields, deadlines, folders: [] };
 
 describe("recherche locale", () => {
   const ids = (q: string) => searchDocuments(state, q).map((d) => d.id);

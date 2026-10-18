@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarClock, ChevronRight, FilePlus2 } from "lucide-react";
+import { CalendarClock, ChevronRight, FilePlus2, FolderPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusPill } from "@/components/ui/status-pill";
 import { documentCategories, typeInfo } from "@/lib/admin/catalog";
-import { formatDocShortDate, periodLabel, recentDocuments, relativeDue, searchDocuments, summarizeCategory, upcomingDeadlines } from "@/lib/admin/documents";
+import {
+  documentsInFolder,
+  formatDocShortDate,
+  periodLabel,
+  recentDocuments,
+  relativeDue,
+  searchDocuments,
+  sortFolders,
+  summarizeCategory,
+  upcomingDeadlines,
+} from "@/lib/admin/documents";
 import { useDocuments } from "@/store/documents-store";
 import type { AdminState, DocumentCategory } from "@/types/documents";
 import { DocumentRow } from "./document-row";
@@ -27,7 +37,53 @@ function categoryLine(state: AdminState, category: DocumentCategory): string {
   return parts.join(" · ");
 }
 
-/** « Mes papiers » : à faire, mes documents (4 catégories), ajouts récents. Pas de tableau de bord chiffré. */
+/** Mes dossiers : ceux créés par l'utilisateur, et de quoi en créer un. */
+function FoldersSection({ state, className }: { state: AdminState & { openSheet: ReturnType<typeof useDocuments>["openSheet"] }; className?: string }) {
+  const folders = sortFolders(state.folders);
+  return (
+    <section aria-labelledby="mes-dossiers" className={className}>
+      <h2 id="mes-dossiers" className="mb-3 px-1 text-[17px] font-semibold tracking-tight">
+        Mes dossiers
+      </h2>
+      <ul className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+        {folders.map((folder) => {
+          const count = documentsInFolder(state, folder.id).length;
+          return (
+            <li key={folder.id}>
+              <Link href={`/administratif/dossiers/${folder.id}`} className="lift flex h-full min-h-20 items-center gap-3 rounded-card bg-surface p-4 shadow-card ring-1 ring-ink/[0.04]">
+                <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-2xl bg-lilac-50 text-xl">
+                  {folder.emoji}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-[16px] font-semibold">{folder.name}</span>
+                  <span className="block text-[13px] text-muted">{count === 0 ? "Vide" : `${count} document${count > 1 ? "s" : ""}`}</span>
+                </span>
+                <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
+              </Link>
+            </li>
+          );
+        })}
+        <li>
+          <button
+            type="button"
+            onClick={() => state.openSheet({ type: "folder" })}
+            className="flex h-full min-h-20 w-full items-center gap-3 rounded-card border-2 border-dashed border-blush-200 p-4 text-left hover:bg-blush-50/60"
+          >
+            <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blush-50">
+              <FolderPlus size={20} className="text-blush-700" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[16px] font-semibold">Nouveau dossier</span>
+              <span className="block text-[13px] text-muted">{folders.length === 0 ? "Range tes papiers à ta façon" : "Appartement, voiture, école…"}</span>
+            </span>
+          </button>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+/** « Mes papiers » : à faire, mes documents (4 catégories), mes dossiers, ajouts récents. Pas de tableau de bord chiffré. */
 export function AdminHome() {
   const state = useDocuments();
   const { documents, fields, deadlines, today, openSheet } = state;
@@ -77,15 +133,18 @@ export function AdminHome() {
           )}
         </Card>
       ) : documents.length === 0 ? (
-        <Card>
-          <EmptyState emoji="🗂️" title="Range ici tes papiers" className="py-6">
-            <span className="block">Fiches de paie, mutuelle, avis d&apos;impôt, contrats d&apos;assurance : photographie-les ou importe-les, Cocon les classe avec toi.</span>
-            <Button onClick={() => openSheet({ type: "import" })} className="mt-5">
-              <FilePlus2 size={18} aria-hidden />
-              Ajouter un document
-            </Button>
-          </EmptyState>
-        </Card>
+        <div className="flex flex-col gap-4 sm:gap-5">
+          <Card>
+            <EmptyState emoji="🗂️" title="Range ici tes papiers" className="py-6">
+              <span className="block">Fiches de paie, mutuelle, avis d&apos;impôt, contrats d&apos;assurance : photographie-les ou importe-les, Cocon les classe avec toi.</span>
+              <Button onClick={() => openSheet({ type: "import" })} className="mt-5">
+                <FilePlus2 size={18} aria-hidden />
+                Ajouter un document
+              </Button>
+            </EmptyState>
+          </Card>
+          <FoldersSection state={state} />
+        </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5 lg:grid lg:grid-cols-12 lg:items-start">
           <div className="flex flex-col gap-4 sm:gap-5 max-lg:contents lg:col-span-7">
@@ -143,11 +202,13 @@ export function AdminHome() {
                 ))}
               </ul>
             </section>
+
+            <FoldersSection state={state} className="order-3" />
           </div>
 
           {recent.length > 0 && (
             <div className="flex flex-col gap-4 sm:gap-5 max-lg:contents lg:col-span-5">
-              <Card className="order-3">
+              <Card className="order-4">
                 <SectionHeader title="Ajouts récents" />
                 <ul className="-mx-3 -my-1">
                   {recent.map((doc) => (

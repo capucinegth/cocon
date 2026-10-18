@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Camera, FileText, Images, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Crop, FileText, Images, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/form-error";
@@ -10,15 +10,25 @@ import { ACCEPTED_FILE_TYPES, categoryInfo, typeInfo } from "@/lib/admin/catalog
 import { classifyFileName, titleFromFileName, type Classification } from "@/lib/admin/classify";
 import { checkFinalSize, checkSelectedFile, storageFileName } from "@/lib/admin/files";
 import { formatDocDate } from "@/lib/admin/documents";
+import type { Quad, ScanMode } from "@/lib/admin/scan";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { RepositoryError } from "@/services/repository";
 import { useDocuments } from "@/store/documents-store";
 import { useUI } from "@/store/ui-store";
 import type { DocumentField } from "@/types/documents";
 import { DocumentForm, emptyValues, formProblem, toDocumentFields, valuesFromClassification, type DocumentFormValues } from "./document-form";
-import { pagesToPdf, photoToPage, PhotoError, readHead, releasePages, type PhotoPage } from "./photo-pipeline";
+import { initialQuad, pagesToPdf, PhotoError, preparePhoto, readHead, releasePages, releaseSource, scanPage, type PhotoPage, type ScanSource } from "./photo-pipeline";
+import { ScanEditor } from "./scan-editor";
 
 type Source = { kind: "photos"; pages: PhotoPage[] } | { kind: "pdf"; file: File; url: string };
+
+/**
+ * Détourage en cours : les nouvelles photos, une par une (à la place d'une page si « Reprendre »),
+ * ou une page déjà ajoutée (« Recadrer »).
+ */
+type Editing =
+  | { kind: "new"; queue: ScanSource[]; total: number; replaceIndex: number | null; classification: Classification | null; fallbackTitle: string }
+  | { kind: "page"; index: number };
 
 /** Taille maximale d'une photo AVANT préparation (elle est ensuite réduite) : protège l'appareil. */
 const MAX_RAW_PHOTO_BYTES = 60 * 1024 * 1024;
@@ -37,32 +47,41 @@ function proposedFields(classification: Classification | null): Omit<DocumentFie
   return [];
 }
 
-function ImportForm() {
-  const { today, importDocument, closeSheet } = useDocuments();
+function ImportForm({ presetFolderId }: { presetFolderId?: string }) {
+  const { today, folders, importDocument, closeSheet } = useDocuments();
   const { showToast } = useUI();
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<Source | null>(null);
-  const [values, setValues] = useState<DocumentFormValues>(emptyValues());
+  const [values, setValues] = useState<DocumentFormValues>(emptyValues("", presetFolderId));
   const [classification, setClassification] = useState<Classification | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [preview, setPreview] = useState<number | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  /** Dernier rendu choisi : proposé pour les pages suivantes. */
+  const [lastMode, setLastMode] = useState<ScanMode>("document");
   /** Page à remplacer par la prochaine photo (« Reprendre la photo »). */
   const replaceAt = useRef<number | null>(null);
   const save = useAsyncAction();
 
   // Aucun aperçu local ne survit à la feuille : les liens blob: sont révoqués à la fermeture.
   const sourceRef = useRef(source);
+  const editingRef = useRef(editing);
   useEffect(() => {
     sourceRef.current = source;
-  }, [source]);
+    editingRef.current = editing;
+  }, [source, editing]);
   useEffect(
     () => () => {
       const current = sourceRef.current;
       if (current?.kind === "photos") releasePages(current.pages);
       if (current?.kind === "pdf") URL.revokeObjectURL(current.url);
+      const pending = editingRef.current;
+      if (pending?.kind === "new") pending.queue.forEach(releaseSource);
     },
     [],
   );
@@ -73,42 +92,109 @@ function ImportForm() {
     if (source?.kind === "photos") releasePages(source.pages);
     if (source?.kind === "pdf") URL.revokeObjectURL(source.url);
     setSource(null);
-    setValues(emptyValues());
+    setValues(emptyValues("", presetFolderId));
     setClassification(null);
     setProblem(null);
     setPreview(null);
+    if (editing?.kind === "new") editing.queue.forEach(releaseSource);
+    setEditing(null);
+    setScanError(null);
     save.clearError();
   }
 
+  /** Nouvelles photos : préparées et analysées sur l'appareil, puis détourées une par une. */
   async function addPhotos(files: File[]) {
     if (files.length === 0) return;
     setProblem(null);
     setPreparing(true);
+    const prepared: ScanSource[] = [];
     try {
-      const prepared: PhotoPage[] = [];
       for (const file of files) {
         if (file.size > MAX_RAW_PHOTO_BYTES) throw new PhotoError("Cette photo est trop lourde pour être préparée ici.");
         const check = checkSelectedFile({ size: 1 }, await readHead(file));
         if (!check.ok || check.kind !== "image") throw new PhotoError("Ce fichier n'est pas une photo. Choisis une image (JPEG, PNG, WebP ou HEIC).");
-        prepared.push(await photoToPage(file));
+        prepared.push(await preparePhoto(file));
       }
-      const current = source?.kind === "photos" ? source.pages : [];
       const index = replaceAt.current;
-      const next = index !== null && current[index] ? current.map((p, i) => (i === index ? prepared[0] : p)).concat(prepared.slice(1)) : [...current, ...prepared];
-      if (index !== null && current[index]) URL.revokeObjectURL(current[index].url);
-      if (source?.kind === "pdf") URL.revokeObjectURL(source.url);
-      if (!source || source.kind === "pdf") {
-        const fromName = files.length === 1 ? classifyFileName(files[0].name, today) : null;
-        setClassification(fromName);
-        setValues(fromName ? valuesFromClassification(fromName) : emptyValues(`Document du ${formatDocDate(today)}`));
-      }
-      setSource({ kind: "photos", pages: next });
+      setScanError(null);
+      setEditing({
+        kind: "new",
+        queue: prepared,
+        total: prepared.length,
+        replaceIndex: index !== null && pages[index] ? index : null,
+        classification: files.length === 1 ? classifyFileName(files[0].name, today) : null,
+        fallbackTitle: `Document du ${formatDocDate(today)}`,
+      });
     } catch (error) {
+      prepared.forEach(releaseSource);
       setProblem(error instanceof PhotoError ? error.message : "Cette photo n'a pas pu être préparée. Réessaie.");
     } finally {
       replaceAt.current = null;
       setPreparing(false);
     }
+  }
+
+  /** Page détourée validée : ajoutée (ou mise à la place de celle à reprendre / recadrer). */
+  async function confirmScan(quad: Quad, mode: ScanMode) {
+    if (!editing) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      setLastMode(mode);
+      if (editing.kind === "page") {
+        const old = pages[editing.index];
+        const page = await scanPage(old.source, quad, mode, old.id);
+        URL.revokeObjectURL(old.url);
+        setSource({ kind: "photos", pages: pages.map((p, i) => (i === editing.index ? page : p)) });
+        setEditing(null);
+        return;
+      }
+      const [current, ...rest] = editing.queue;
+      const page = await scanPage(current, quad, mode);
+      let next: PhotoPage[];
+      if (editing.replaceIndex !== null && pages[editing.replaceIndex]) {
+        const old = pages[editing.replaceIndex];
+        releasePages([old]);
+        next = pages.map((p, i) => (i === editing.replaceIndex ? page : p));
+      } else {
+        next = [...pages, page];
+      }
+      if (source?.kind !== "photos") {
+        // Première page : le PDF éventuellement choisi avant est remplacé, le classement repart du nom de la photo.
+        if (source?.kind === "pdf") URL.revokeObjectURL(source.url);
+        setClassification(editing.classification);
+        const next = editing.classification ? valuesFromClassification(editing.classification) : emptyValues(editing.fallbackTitle);
+        setValues({ ...next, folderId: values.folderId });
+      }
+      setSource({ kind: "photos", pages: next });
+      setEditing(rest.length > 0 ? { ...editing, queue: rest, replaceIndex: null } : null);
+    } catch (error) {
+      setScanError(error instanceof PhotoError ? error.message : "Cette page n'a pas pu être scannée. Réessaie.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  /** Photo écartée (ou recadrage abandonné) : rien ne change dans les pages. */
+  function cancelScan() {
+    setScanError(null);
+    if (editing?.kind === "new") {
+      const [current, ...rest] = editing.queue;
+      releaseSource(current);
+      setEditing(rest.length > 0 ? { ...editing, queue: rest } : null);
+      return;
+    }
+    setEditing(null);
+  }
+
+  function retakeFromEditor() {
+    if (editing?.kind !== "new") return;
+    const replaceIndex = editing.replaceIndex;
+    editing.queue.forEach(releaseSource);
+    setEditing(null);
+    setScanError(null);
+    replaceAt.current = replaceIndex;
+    cameraInput.current?.click();
   }
 
   async function chooseFile(file: File | undefined) {
@@ -118,9 +204,10 @@ function ImportForm() {
     if (!check.ok) return setProblem(check.reason);
     if (check.kind === "image") return addPhotos([file]);
     if (source?.kind === "photos") releasePages(source.pages);
+    if (source?.kind === "pdf") URL.revokeObjectURL(source.url);
     const fromName = classifyFileName(file.name, today);
     setClassification(fromName);
-    setValues(fromName ? valuesFromClassification(fromName) : emptyValues(titleFromFileName(file.name)));
+    setValues({ ...(fromName ? valuesFromClassification(fromName) : emptyValues(titleFromFileName(file.name))), folderId: values.folderId });
     setSource({ kind: "pdf", file, url: URL.createObjectURL(file) });
   }
 
@@ -134,7 +221,7 @@ function ImportForm() {
 
   function removePage(index: number) {
     if (source?.kind !== "photos") return;
-    URL.revokeObjectURL(source.pages[index].url);
+    releasePages([source.pages[index]]);
     const next = source.pages.filter((_, i) => i !== index);
     setPreview(null);
     if (next.length === 0) return reset();
@@ -147,7 +234,7 @@ function ImportForm() {
   }
 
   const formError = formProblem(values);
-  const canSave = source !== null && !formError && !save.pending && !preparing;
+  const canSave = source !== null && !formError && !save.pending && !preparing && !editing;
   const suggestionKept = classification !== null && values.category === classification.category && values.type === classification.type;
 
   async function handleSave() {
@@ -171,7 +258,8 @@ function ImportForm() {
         file,
         suggestionKept ? proposedFields(classification) : [],
       );
-      showToast(`« ${document.title} » ajouté dans ${categoryInfo(document.category).label}`);
+      const folder = document.folderId ? folders.find((f) => f.id === document.folderId) : undefined;
+      showToast(`« ${document.title} » ajouté dans ${folder ? `${categoryInfo(document.category).label} et « ${folder.name} »` : categoryInfo(document.category).label}`);
     });
     if (!ok) return;
     reset();
@@ -224,11 +312,39 @@ function ImportForm() {
     </>
   );
 
+  if (editing) {
+    const target = editing.kind === "new" ? editing.queue[0] : pages[editing.index].source;
+    const page = editing.kind === "page" ? pages[editing.index] : null;
+    const position = editing.kind === "new" ? editing.total - editing.queue.length + 1 : 0;
+    return (
+      <>
+        {inputs}
+        <ScanEditor
+          key={page ? `${page.id}-${page.url}` : target.url}
+          source={target}
+          initialQuad={page ? page.quad : initialQuad(target)}
+          initialMode={page ? page.mode : lastMode}
+          progress={editing.kind === "new" && editing.total > 1 ? `Photo ${position} sur ${editing.total}` : undefined}
+          busy={scanning}
+          error={scanError}
+          confirmLabel={editing.kind === "page" ? "Valider" : editing.replaceIndex !== null ? "Remplacer la page" : "Valider la page"}
+          cancelLabel={editing.kind === "page" ? "Annuler" : "Écarter"}
+          onConfirm={(quad, mode) => void confirmScan(quad, mode)}
+          onCancel={cancelScan}
+          onRetake={editing.kind === "new" ? retakeFromEditor : undefined}
+        />
+      </>
+    );
+  }
+
   if (!source) {
     return (
       <div className="flex flex-col gap-3 px-6 pb-[max(env(safe-area-inset-bottom),24px)] pt-2">
         {inputs}
-        <p className="text-[15px] text-muted">Une photo de chaque page, ou un fichier déjà sur ton téléphone. Rien n&apos;est envoyé avant que tu confirmes.</p>
+        <p className="text-[15px] text-muted">
+          Une photo de chaque page : Cocon détoure la feuille et la redresse comme un scanner. Ou un fichier déjà sur ton téléphone. Rien n&apos;est envoyé avant que tu
+          confirmes.
+        </p>
         <Button size="lg" className="w-full" onClick={() => cameraInput.current?.click()} disabled={preparing} data-autofocus>
           <Camera size={20} aria-hidden />
           Prendre une photo
@@ -270,8 +386,12 @@ function ImportForm() {
               <figure className="relative rounded-3xl bg-canvas p-2">
                 {/* eslint-disable-next-line @next/next/no-img-element -- aperçu local (blob:) */}
                 <img src={pages[preview].url} alt={`Page ${preview + 1} sur ${pages.length}`} className="mx-auto max-h-[55vh] w-auto rounded-2xl object-contain" />
-                <figcaption className="mt-2 text-center text-[13px] font-medium text-ink-soft">
+                <figcaption className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[13px] font-medium text-ink-soft">
                   Page {preview + 1}/{pages.length}
+                  <Button variant="accent" onClick={() => setEditing({ kind: "page", index: preview })}>
+                    <Crop size={17} aria-hidden />
+                    Recadrer
+                  </Button>
                 </figcaption>
                 <button
                   type="button"
@@ -286,14 +406,24 @@ function ImportForm() {
               <ol className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {pages.map((page, index) => (
                   <li key={page.id} className="flex min-w-0 flex-col gap-1.5 rounded-3xl bg-canvas p-2">
-                    <button type="button" onClick={() => setPreview(index)} className="overflow-hidden rounded-2xl bg-surface" aria-label={`Agrandir la page ${index + 1}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element -- aperçu local (blob:) */}
-                      <img src={page.url} alt="" className="aspect-[3/4] w-full object-cover" />
-                    </button>
+                    <div className="relative">
+                      <button type="button" onClick={() => setPreview(index)} className="block w-full overflow-hidden rounded-2xl bg-surface" aria-label={`Agrandir la page ${index + 1}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- aperçu local (blob:) */}
+                        <img src={page.url} alt="" className="aspect-[3/4] w-full object-contain" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing({ kind: "page", index })}
+                        aria-label={`Recadrer la page ${index + 1}`}
+                        className="absolute right-1.5 top-1.5 grid size-11 place-items-center rounded-full bg-surface/90 text-ink shadow-sm hover:bg-surface"
+                      >
+                        <Crop size={17} aria-hidden />
+                      </button>
+                    </div>
                     <p className="text-center text-[13px] font-semibold">
                       Page {index + 1}/{pages.length}
                     </p>
-                    <div className="flex justify-center gap-0.5">
+                    <div className="flex flex-wrap justify-center gap-0.5">
                       <button type="button" onClick={() => movePage(index, -1)} disabled={index === 0} aria-label={`Placer la page ${index + 1} avant`} className="grid size-11 place-items-center rounded-full text-ink-soft hover:bg-blush-50 disabled:opacity-30">
                         <ArrowLeft size={17} aria-hidden />
                       </button>
@@ -370,10 +500,10 @@ function ImportForm() {
 /** « Ajouter un document » : prendre une photo (plusieurs pages possibles), choisir une photo ou un fichier. */
 export function ImportSheet() {
   const { sheet, sheetOpen, sheetSession, closeSheet } = useDocuments();
-  const active = sheet?.type === "import";
+  const active = sheet?.type === "import" ? sheet : null;
   return (
-    <Sheet open={sheetOpen && active} onClose={closeSheet} title="Ajouter un document">
-      {active && <ImportForm key={sheetSession} />}
+    <Sheet open={sheetOpen && active !== null} onClose={closeSheet} title="Ajouter un document">
+      {active && <ImportForm key={sheetSession} presetFolderId={active.folderId} />}
     </Sheet>
   );
 }

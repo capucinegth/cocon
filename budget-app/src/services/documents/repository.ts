@@ -6,7 +6,7 @@
  * par la RLS + espace de stockage PRIVÉ « documents », liens temporaires uniquement).
  */
 import type { DataSource } from "@/lib/supabase/env";
-import type { AdminDocument, AdminState, DocumentDeadline, DocumentField } from "@/types/documents";
+import type { AdminDocument, AdminState, DocumentDeadline, DocumentField, DocumentFolder } from "@/types/documents";
 
 /** Nouveau document, avant l'envoi : le chemin de stockage est attribué par le dépôt. */
 export type DocumentDraft = Omit<AdminDocument, "filePath" | "createdAt">;
@@ -30,6 +30,11 @@ export interface DocumentRepository {
 
   saveDeadline(deadline: DocumentDeadline): Promise<void>;
   deleteDeadline(deadlineId: string): Promise<void>;
+
+  /** Crée ou renomme un dossier (nom unique, sans tenir compte des majuscules). */
+  saveFolder(folder: DocumentFolder): Promise<DocumentFolder>;
+  /** Supprime le dossier SEULEMENT : ses documents restent, simplement sortis du dossier. */
+  deleteFolder(folderId: string): Promise<void>;
 }
 
 /** Durée de validité des liens temporaires (secondes) : le fichier s'ouvre aussitôt après. */

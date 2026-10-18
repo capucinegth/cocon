@@ -39,6 +39,7 @@ const COCON_TABLES = [
   "categories",
   "document_deadlines",
   "document_fields",
+  "document_folders",
   "documents",
   "profiles",
   "recurring_transactions",
