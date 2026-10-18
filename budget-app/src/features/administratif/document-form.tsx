@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { defaultType, documentCategories, typeInfo, typesOf } from "@/lib/admin/catalog";
 import type { Classification } from "@/lib/admin/classify";
 import type { AdminDocument, DocumentCategory } from "@/types/documents";
+import { useDocuments } from "@/store/documents-store";
 import { FolderPicker } from "./folder-picker";
 
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -84,6 +85,7 @@ export function DocumentForm({
   today: string;
   withDescription?: boolean;
 }) {
+  const { foldersEnabled } = useDocuments();
   const set = (patch: Partial<DocumentFormValues>) => onChange({ ...values, ...patch });
   const type = values.category ? typeInfo(values.type, values.category) : undefined;
   const currentYear = Number(today.slice(0, 4));
@@ -156,9 +158,11 @@ export function DocumentForm({
         </FormField>
       )}
 
-      <FormField label="Dossier" hint="facultatif" as="div">
-        <FolderPicker value={values.folderId} onChange={(folderId) => set({ folderId })} />
-      </FormField>
+      {foldersEnabled && (
+        <FormField label="Dossier" hint="facultatif" as="div">
+          <FolderPicker value={values.folderId} onChange={(folderId) => set({ folderId })} />
+        </FormField>
+      )}
 
       <label className="block">
         <span className="mb-2.5 block text-sm font-semibold text-muted">

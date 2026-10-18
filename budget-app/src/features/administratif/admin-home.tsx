@@ -143,7 +143,7 @@ export function AdminHome() {
               </Button>
             </EmptyState>
           </Card>
-          <FoldersSection state={state} />
+          {state.foldersEnabled && <FoldersSection state={state} />}
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5 lg:grid lg:grid-cols-12 lg:items-start">
@@ -203,7 +203,7 @@ export function AdminHome() {
               </ul>
             </section>
 
-            <FoldersSection state={state} className="order-3" />
+            {state.foldersEnabled && <FoldersSection state={state} className="order-3" />}
           </div>
 
           {recent.length > 0 && (

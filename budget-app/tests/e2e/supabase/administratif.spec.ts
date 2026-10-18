@@ -120,3 +120,46 @@ test("photo scannée rangée dans un nouveau dossier ; supprimer le dossier gard
   await page.goto("/administratif/assurances");
   await expect(page.getByRole("button", { name: /Carte grise/ })).toBeVisible();
 });
+
+/**
+ * Parcours photo complet, sans dossiers : il doit marcher AVANT comme APRÈS la migration « dossiers »
+ * (régression du test sur iPhone : la PR déployée sur une base pas encore migrée ne chargeait rien).
+ */
+test("photos : appareil photo + 2 photos de la galerie → scan → un PDF de 3 pages enregistré, rouvert, consulté", async ({ page }) => {
+  await signUp(page, { prefix: "papiers-photos" });
+  await page.goto("/administratif");
+  await expect(page.getByText("Range ici tes papiers")).toBeVisible();
+  await page.getByRole("button", { name: "Ajouter un document" }).filter({ visible: true }).first().click();
+
+  const camera = page.waitForEvent("filechooser");
+  await sheet(page).getByRole("button", { name: "Prendre une photo" }).click();
+  await (await camera).setFiles(await tablePhoto(page));
+  await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+  await expect(sheet(page).getByText("Page 1/1")).toBeVisible();
+
+  const gallery = page.waitForEvent("filechooser");
+  await sheet(page).getByRole("button", { name: "Depuis mes photos" }).click();
+  await (await gallery).setFiles([await tablePhoto(page), { ...(await tablePhoto(page)), name: "IMG_0043.jpg" }]);
+  await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+  await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+  await expect(sheet(page).getByText("Page 3/3")).toBeVisible();
+
+  await sheet(page).getByRole("button", { name: /Assurances/ }).click();
+  await sheet(page).getByLabel("Titre").fill("Constat amiable");
+  await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText("« Constat amiable » ajouté dans Assurances")).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: /Constat amiable/ }).first().click();
+  await expect(sheet(page)).toContainText("constat-amiable.pdf");
+  await expect(sheet(page)).toContainText("3 pages");
+  const viewed = nextViewerUrl(page);
+  await sheet(page).getByRole("button", { name: "Consulter" }).click();
+  const url = await viewed;
+  expect(url).toContain("/storage/v1/object/sign/documents/");
+  const pdf = await page.request.get(url);
+  expect(pdf.status()).toBe(200);
+  const bytes = await pdf.body();
+  expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  expect((bytes.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length).toBe(3);
+});

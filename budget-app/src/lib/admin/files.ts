@@ -7,15 +7,29 @@ import { MAX_FILE_BYTES } from "./catalog";
 
 export type SniffedType = "pdf" | "jpeg" | "png" | "webp" | "heic" | "unknown";
 
-/** Format réel d'après les premiers octets du fichier. */
+/** Un PDF peut avoir quelques octets avant son en-tête « %PDF- » (au plus 1 024, norme PDF). */
+const PDF_HEADER_WINDOW = 1024;
+
+/** Format réel d'après les premiers octets du fichier (lire au moins 1 024 octets pour les PDF). */
 export function sniffFileType(head: Uint8Array): SniffedType {
   const ascii = (from: number, to: number) => String.fromCharCode(...head.slice(from, to));
-  if (ascii(0, 5) === "%PDF-") return "pdf";
+  // Signatures d'image en tête de fichier d'abord : une photo n'est jamais prise pour un PDF.
   if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return "jpeg";
   if (head[0] === 0x89 && ascii(1, 4) === "PNG") return "png";
   if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "webp";
-  if (ascii(4, 8) === "ftyp" && /^(heic|heix|heif|mif1|msf1|hevc)$/.test(ascii(8, 12))) return "heic";
+  // Photos HEIC / HEIF de l'iPhone (marques ISO-BMFF, y compris rafales et séquences).
+  if (ascii(4, 8) === "ftyp" && /^(heic|heix|heim|heis|heif|hevc|hevx|hevm|hevs|mif1|msf1)$/.test(ascii(8, 12))) return "heic";
+  if (indexOfAscii(head.subarray(0, PDF_HEADER_WINDOW), "%PDF-") >= 0) return "pdf";
   return "unknown";
+}
+
+function indexOfAscii(bytes: Uint8Array, needle: string): number {
+  const codes = [...needle].map((c) => c.charCodeAt(0));
+  outer: for (let i = 0; i + codes.length <= bytes.length; i += 1) {
+    for (let j = 0; j < codes.length; j += 1) if (bytes[i + j] !== codes[j]) continue outer;
+    return i;
+  }
+  return -1;
 }
 
 export type FileCheck = { ok: true; kind: "pdf" | "image" } | { ok: false; reason: string };

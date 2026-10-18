@@ -131,6 +131,10 @@ fusionner le code (sans effet sur la version en service, qui n'utilise pas ces �
   être rangé que dans un dossier du même utilisateur. Supprimer un dossier **ne supprime jamais ses
   documents** : `on delete set null (folder_id)` vide seulement ce champ.
 
+Le code de cette version fonctionne AUSSI avant la migration (aperçu Vercel branché sur la production,
+par exemple) : « Mes papiers » se charge et les documents s'enregistrent comme avant ; seuls les
+dossiers sont masqués, jusqu'à l'application de la migration.
+
 Le scan des photos (détourage, redressement, rendu « document ») se fait entièrement sur l'appareil :
 il ne demande aucune migration et n'envoie rien à un service externe.
 

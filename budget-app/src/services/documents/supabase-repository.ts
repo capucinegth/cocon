@@ -5,6 +5,7 @@ import { toRepositoryError } from "@/services/supabase-repository";
 import type { AdminDocument } from "@/types/documents";
 import {
   DEADLINE_COLUMNS,
+  DOCUMENT_BASE_COLUMNS,
   DOCUMENT_COLUMNS,
   FIELD_COLUMNS,
   FOLDER_COLUMNS,
@@ -28,6 +29,33 @@ import { SIGNED_URL_SECONDS, type DocumentRepository } from "./repository";
 export const DOCUMENTS_BUCKET = "documents";
 
 type Result<T> = { data: T | null; error: PostgrestError | null; status?: number };
+
+/**
+ * Table ou colonne inconnue (PostgreSQL 42P01 / 42703, cache de schéma PostgREST PGRST205 / PGRST204) :
+ * la base n'a pas encore la migration « dossiers ».
+ */
+const MISSING_SCHEMA_CODES = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
+const MISSING = Symbol("schéma absent");
+
+/** Comme `must`, mais renvoie MISSING si la table ou la colonne demandée n'existe pas (encore). */
+async function unlessMissing<T>(query: PromiseLike<Result<T>>, action: string): Promise<T | typeof MISSING> {
+  let result: Result<T>;
+  try {
+    result = await query;
+  } catch (error) {
+    throw toRepositoryError({ message: error instanceof Error ? error.message : String(error), code: "", status: 0 }, action);
+  }
+  if (result.error && MISSING_SCHEMA_CODES.has(result.error.code)) return MISSING;
+  if (result.error) throw toRepositoryError({ ...result.error, status: result.status }, action);
+  return result.data as T;
+}
+
+/** Sans la migration « dossiers », la colonne folder_id n'est jamais envoyée. */
+function withoutFolder<T extends { folder_id?: unknown }>(row: T): Omit<T, "folder_id"> {
+  const { folder_id: _ignored, ...rest } = row;
+  void _ignored;
+  return rest;
+}
 
 async function must<T>(query: PromiseLike<Result<T>>, action: string): Promise<T> {
   let result: Result<T>;
@@ -55,6 +83,21 @@ function storageError(error: { message?: string; statusCode?: string | number; s
 
 export function createSupabaseDocumentRepository(client: SupabaseClient): DocumentRepository {
   const bucket = () => client.storage.from(DOCUMENTS_BUCKET);
+  /**
+   * Base à jour (migration « dossiers » appliquée) ? Connu au chargement ; supposé vrai avant.
+   * Sans elle, tout le reste fonctionne : les dossiers sont simplement indisponibles.
+   */
+  let foldersReady = true;
+  /** Écrit avec folder_id si la base le connaît ; sinon (base pas encore migrée), recommence sans, une fois. */
+  async function writeDocument<T>(run: (withFolder: boolean) => PromiseLike<Result<T>>, action: string): Promise<T> {
+    if (foldersReady) {
+      const result = await unlessMissing(run(true), action);
+      if (result !== MISSING) return result;
+      foldersReady = false;
+    }
+    return must(run(false), action);
+  }
+  const foldersUnavailable = () => new RepositoryError("Les dossiers ne sont pas encore disponibles : la base de données doit d'abord être mise à jour.", "server");
 
   async function currentUserId(): Promise<string> {
     const { data, error } = await client.auth.getUser();
@@ -66,18 +109,26 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
     source: "supabase",
 
     async load(today) {
-      const [documents, fields, deadlines, folders] = await Promise.all([
-        must<DocumentRow[]>(client.from("documents").select(DOCUMENT_COLUMNS).order("created_at", { ascending: false }).limit(2000), "charger tes documents"),
+      const selectDocuments = (columns: string) => client.from("documents").select(columns).order("created_at", { ascending: false }).limit(2000);
+      const [withFolders, fields, deadlines, folders] = await Promise.all([
+        unlessMissing<DocumentRow[]>(selectDocuments(DOCUMENT_COLUMNS) as unknown as PromiseLike<Result<DocumentRow[]>>, "charger tes documents"),
         must<FieldRow[]>(client.from("document_fields").select(FIELD_COLUMNS).limit(10000), "charger tes documents"),
         must<DeadlineRow[]>(client.from("document_deadlines").select(DEADLINE_COLUMNS).order("due_date").limit(5000), "charger tes échéances"),
-        must<FolderRow[]>(client.from("document_folders").select(FOLDER_COLUMNS).order("name").limit(500), "charger tes dossiers"),
+        unlessMissing<FolderRow[]>(client.from("document_folders").select(FOLDER_COLUMNS).order("name").limit(500), "charger tes dossiers"),
       ]);
+      foldersReady = withFolders !== MISSING && folders !== MISSING;
+      // Base pas encore migrée : les documents se chargent comme avant, sans dossiers.
+      const documents =
+        withFolders !== MISSING
+          ? withFolders
+          : await must<DocumentRow[]>(selectDocuments(DOCUMENT_BASE_COLUMNS) as unknown as PromiseLike<Result<DocumentRow[]>>, "charger tes documents");
       return {
         today,
         documents: documents.map(documentFromRow),
         fields: fields.map(fieldFromRow),
         deadlines: deadlines.map(deadlineFromRow),
-        folders: folders.map(folderFromRow),
+        folders: foldersReady && folders !== MISSING ? folders.map(folderFromRow) : [],
+        foldersEnabled: foldersReady,
       };
     },
 
@@ -93,8 +144,13 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
       if (upload.error) throw storageError(upload.error, "envoyer le document");
 
       try {
-        const saved = await must<DocumentRow>(
-          client.from("documents").insert(newDocumentToRow(document)).select(DOCUMENT_COLUMNS).single(),
+        const saved = await writeDocument<DocumentRow>(
+          (withFolder) =>
+            client
+              .from("documents")
+              .insert(withFolder ? newDocumentToRow(document) : withoutFolder(newDocumentToRow(document)))
+              .select(withFolder ? DOCUMENT_COLUMNS : DOCUMENT_BASE_COLUMNS)
+              .single() as unknown as PromiseLike<Result<DocumentRow>>,
           "enregistrer le document",
         );
         if (fields.length > 0) {
@@ -111,8 +167,13 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
     },
 
     async updateDocument(document) {
-      const rows = await must<unknown[]>(
-        client.from("documents").update(documentToRow(document)).eq("id", document.id).select("id"),
+      const rows = await writeDocument<unknown[]>(
+        (withFolder) =>
+          client
+            .from("documents")
+            .update(withFolder ? documentToRow(document) : withoutFolder(documentToRow(document)))
+            .eq("id", document.id)
+            .select("id"),
         "modifier le document",
       );
       if (!rows || rows.length === 0) throw new RepositoryError("Ce document n'existe plus.", "conflict");
@@ -154,6 +215,7 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
     },
 
     async saveFolder(folder) {
+      if (!foldersReady) throw foldersUnavailable();
       const saved = await must<FolderRow>(
         client.from("document_folders").upsert(folderToRow(folder)).select(FOLDER_COLUMNS).single(),
         "enregistrer le dossier",
@@ -162,6 +224,7 @@ export function createSupabaseDocumentRepository(client: SupabaseClient): Docume
     },
 
     async deleteFolder(folderId) {
+      if (!foldersReady) throw foldersUnavailable();
       // Les documents du dossier restent : la base vide seulement leur folder_id (on delete set null).
       const rows = await must<unknown[]>(client.from("document_folders").delete().eq("id", folderId).select("id"), "supprimer le dossier");
       if (!rows || rows.length === 0) throw new RepositoryError("Ce dossier n'existe plus.", "conflict");

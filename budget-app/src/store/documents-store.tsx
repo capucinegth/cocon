@@ -63,7 +63,7 @@ function createRepository(): DocumentRepository {
   return dataSource === "supabase" ? createSupabaseDocumentRepository(getSupabaseBrowserClient()) : createDemoDocumentRepository(appConfig.demoToday);
 }
 
-const emptyState = (today: string): AdminState => ({ today, documents: [], fields: [], deadlines: [], folders: [] });
+const emptyState = (today: string): AdminState => ({ today, documents: [], fields: [], deadlines: [], folders: [], foldersEnabled: false });
 
 export function DocumentsProvider({ children }: { children: ReactNode }) {
   const { handleSessionExpired } = useSession();
@@ -85,6 +85,8 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       setLoadError(null);
     } catch (error) {
       if (isSessionError(error)) return handleSessionExpired();
+      // Détail technique visible dans la console (inspecteur Safari) ; l'écran garde un message simple.
+      console.error("[Mes papiers] chargement impossible", error);
       setLoadError(errorMessage(error));
       setStatus("error");
     }

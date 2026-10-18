@@ -60,7 +60,7 @@ export function createDemoAdminState(today: string): { state: AdminState; files:
   const files = new Map<string, Blob>(
     documents.map((doc) => [doc.filePath, pdf([doc.title, doc.fileName])]),
   );
-  return { state: { today, documents, fields, deadlines, folders }, files };
+  return { state: { today, documents, fields, deadlines, folders, foldersEnabled: true }, files };
 }
 
 export function createDemoDocumentRepository(today: string): DocumentRepository {

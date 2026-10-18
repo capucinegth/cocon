@@ -243,9 +243,10 @@ function Deadlines({ document }: { document: AdminDocument }) {
 
 /** Ranger le document dans un dossier (ou l'en sortir), enregistré aussitôt. */
 function FolderPlacement({ document }: { document: AdminDocument }) {
-  const { folders, updateDocument } = useDocuments();
+  const { folders, foldersEnabled, updateDocument } = useDocuments();
   const { showToast } = useUI();
   const move = useAsyncAction();
+  if (!foldersEnabled) return null;
 
   async function change(folderId: string) {
     const ok = await move.run(() => updateDocument({ ...document, folderId: folderId || undefined }));

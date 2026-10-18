@@ -117,7 +117,7 @@ const deadlines: DocumentDeadline[] = [
   { id: "d5", documentId: "auto", label: "Déjà traitée", dueDate: "2026-10-18", kind: "echeance", doneAt: "2026-10-15T08:00:00Z" },
   { id: "d6", documentId: "auto", label: "Dans 45 jours", dueDate: "2026-11-30", kind: "autre" },
 ];
-const state: AdminState = { today, documents, fields, deadlines, folders: [] };
+const state: AdminState = { today, documents, fields, deadlines, folders: [], foldersEnabled: true };
 
 describe("recherche locale", () => {
   const ids = (q: string) => searchDocuments(state, q).map((d) => d.id);
@@ -181,6 +181,21 @@ describe("fichiers : vrai format, taille, dimensions", () => {
     expect(sniffFileType(bytes(0, 0, 0, 0x18, "ftypheic"))).toBe("heic");
     expect(sniffFileType(bytes("MZ", 0x90, 0))).toBe("unknown");
     expect(sniffFileType(bytes("<html>"))).toBe("unknown");
+  });
+  it("formats réellement produits par l'iPhone : HEIC/HEIF (toutes marques), PDF avec octets avant l'en-tête", () => {
+    for (const brand of ["heic", "heix", "heim", "heis", "heif", "hevc", "hevx", "mif1", "msf1"]) {
+      expect(sniffFileType(bytes(0, 0, 0, 0x18, `ftyp${brand}`))).toBe("heic");
+    }
+    // Un PDF peut commencer jusqu'à 1 024 octets plus loin (norme PDF) : son contenu reste vérifié.
+    const junk = new Array(700).fill(0x20);
+    expect(sniffFileType(bytes(0xef, 0xbb, 0xbf, ...junk, "%PDF-1.7"))).toBe("pdf");
+    expect(checkSelectedFile({ size: 2000 }, bytes(...junk, "%PDF-1.4"))).toEqual({ ok: true, kind: "pdf" });
+    // Au-delà de 1 024 octets : pas un PDF.
+    expect(sniffFileType(bytes(...new Array(1030).fill(0x20), "%PDF-1.4"))).toBe("unknown");
+    // Une photo qui contiendrait « %PDF- » dans ses métadonnées reste une photo.
+    expect(sniffFileType(bytes(0xff, 0xd8, 0xff, 0xe1, "Exif %PDF-1.4"))).toBe("jpeg");
+    // Le type annoncé (vide sur iPhone, ou faux) n'est jamais utilisé : seul le contenu compte.
+    expect(sniffFileType(bytes("<html>%PDF"))).toBe("unknown");
   });
   it("refus propres : vide, trop lourd, format interdit", () => {
     expect(checkSelectedFile({ size: 1200 }, bytes("%PDF-1.4"))).toEqual({ ok: true, kind: "pdf" });

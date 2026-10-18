@@ -288,6 +288,66 @@ test.describe("Scan d'une photo", () => {
   });
 });
 
+test.describe("Fichiers tels que l'iPhone les fournit", () => {
+  const safariVariants = [
+    {
+      name: "Safari refuse l'option d'orientation de createImageBitmap",
+      script: () => {
+        const original = window.createImageBitmap.bind(window);
+        // Simulation d'un Safari plus ancien : l'option d'orientation est rejetée.
+        window.createImageBitmap = (source: ImageBitmapSource, ...rest: unknown[]) => {
+          if (rest.length > 0) return Promise.reject(new TypeError("The provided value 'from-image' is not a valid enum value"));
+          return original(source);
+        };
+      },
+    },
+    {
+      name: "pas de createImageBitmap du tout : décodage par <img>",
+      script: () => {
+        // @ts-expect-error -- simulation d'un Safari sans createImageBitmap
+        delete window.createImageBitmap;
+        // @ts-expect-error -- idem
+        window.createImageBitmap = undefined;
+      },
+    },
+  ];
+  for (const variant of safariVariants) {
+    test(`photo de l'appareil (sans type annoncé) : ${variant.name}`, async ({ page }) => {
+      await page.addInitScript(variant.script);
+      await page.goto("/administratif");
+      await openImport(page);
+      // L'iPhone peut fournir un fichier sans type MIME : seul le contenu réel compte.
+      await importFrom(page, "Prendre une photo", { ...(await tablePhoto(page, "Releve de compte")), name: "image.jpg", mimeType: "" });
+      await expect(sheet(page).getByText("Cocon a repéré la feuille")).toBeVisible();
+      await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+      await importFrom(page, "Depuis mes photos", [await tablePhoto(page, "Page deux")]);
+      await sheet(page).getByRole("button", { name: "Valider la page" }).click();
+      await expect(sheet(page).getByText("Page 2/2")).toBeVisible();
+      await sheet(page).getByRole("button", { name: /Impôts/ }).click();
+      await sheet(page).getByLabel("Titre").fill("Relevé fiscal");
+      await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+      await expect(page.getByText("« Relevé fiscal » ajouté dans Impôts")).toBeVisible();
+      await page.getByRole("button", { name: /Relevé fiscal/ }).first().click();
+      await expect(sheet(page)).toContainText("2 pages");
+    });
+  }
+
+  test("PDF de l'app Fichiers : type vide et octets avant l'en-tête %PDF- ; faux PDF refusé", async ({ page }) => {
+    await page.goto("/administratif");
+    await openImport(page);
+    const realPdf = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("\n".repeat(40)), Buffer.from("%PDF-1.7\n% scan\n%%EOF\n")]);
+    await importFrom(page, "Choisir un fichier", { name: "Scan 18 oct. 2026.pdf", mimeType: "", buffer: realPdf });
+    await expect(sheet(page).getByText(/Scan 18 oct\. 2026\.pdf/)).toBeVisible();
+    await sheet(page).getByRole("button", { name: /Santé/ }).click();
+    await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByText(/ajouté dans Santé/)).toBeVisible();
+    // Un fichier nommé .pdf mais qui n'en est pas un reste refusé (contenu vérifié, pas l'extension).
+    await openImport(page);
+    await importFrom(page, "Choisir un fichier", { name: "facture.pdf", mimeType: "application/pdf", buffer: Buffer.from("<html>pas un pdf</html>") });
+    await expect(sheet(page).getByText(/Format non pris en charge/)).toBeVisible();
+  });
+});
+
 test.describe("Mes dossiers", () => {
   test("créer, ouvrir, ranger un document, renommer, supprimer (documents gardés)", async ({ page }) => {
     await page.goto("/administratif");

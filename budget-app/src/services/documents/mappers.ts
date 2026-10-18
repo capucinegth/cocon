@@ -19,7 +19,8 @@ export interface DocumentRow {
   period_month: number | null;
   classification_status: AdminDocument["classificationStatus"];
   classification_source: AdminDocument["classificationSource"];
-  folder_id: string | null;
+  /** Absent tant que la migration « dossiers » n'est pas appliquée. */
+  folder_id?: string | null;
   created_at: string;
 }
 
@@ -51,8 +52,10 @@ export interface DeadlineRow {
   done_at: string | null;
 }
 
-export const DOCUMENT_COLUMNS =
-  "id, category, document_type, title, description, file_path, file_name, mime_type, file_size_bytes, page_count, document_date, period_year, period_month, classification_status, classification_source, folder_id, created_at";
+/** Colonnes d'une fiche avant la migration « dossiers » (toujours présentes). */
+export const DOCUMENT_BASE_COLUMNS =
+  "id, category, document_type, title, description, file_path, file_name, mime_type, file_size_bytes, page_count, document_date, period_year, period_month, classification_status, classification_source, created_at";
+export const DOCUMENT_COLUMNS = `${DOCUMENT_BASE_COLUMNS}, folder_id`;
 export const FOLDER_COLUMNS = "id, name, emoji, created_at";
 export const FIELD_COLUMNS = "id, document_id, field_key, value_text, value_amount_cents, value_date, status, source, validated_at";
 export const DEADLINE_COLUMNS = "id, document_id, label, due_date, kind, done_at";

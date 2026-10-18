@@ -80,4 +80,6 @@ export interface AdminState {
   fields: DocumentField[];
   deadlines: DocumentDeadline[];
   folders: DocumentFolder[];
+  /** Dossiers utilisables (base à jour). Sinon tout fonctionne, sans dossiers. */
+  foldersEnabled: boolean;
 }

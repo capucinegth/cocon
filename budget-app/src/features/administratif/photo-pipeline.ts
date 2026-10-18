@@ -39,20 +39,67 @@ const DETECTION_SIDE = 400;
 
 export class PhotoError extends Error {}
 
+/** Premiers octets d'un fichier : assez pour reconnaître son vrai format (un PDF peut commencer jusqu'à 1 024 octets plus loin). */
 export async function readHead(file: Blob): Promise<Uint8Array> {
-  return new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  return new Uint8Array(await file.slice(0, 1024).arrayBuffer());
 }
 
-async function decode(file: Blob): Promise<ImageBitmap> {
+/** Image décodée, à dessiner sur un canevas puis à libérer. */
+interface Decoded {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  close: () => void;
+}
+
+const fromBitmap = (bitmap: ImageBitmap): Decoded => ({ source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() });
+
+/** Décodage par une balise <img> : Safari y applique toujours l'orientation EXIF de la photo. */
+async function decodeWithImage(file: Blob): Promise<Decoded> {
+  const url = URL.createObjectURL(file);
   try {
-    return await createImageBitmap(file, { imageOrientation: "from-image" });
-  } catch {
-    const heic = sniffFileType(await readHead(file)) === "heic";
-    throw new PhotoError(
-      heic
-        ? "Cette photo HEIC ne peut pas être lue ici. Prends la photo depuis Cocon, ou choisis-la depuis Photos : elle sera convertie automatiquement."
-        : "Cette image ne peut pas être lue. Essaie une autre photo.",
-    );
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error("image vide");
+    return { source: image, width: image.naturalWidth, height: image.naturalHeight, close: () => URL.revokeObjectURL(url) };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+/**
+ * Décodage robuste, du plus précis au plus compatible : certaines versions de Safari (iPhone) refusent
+ * l'option d'orientation, voire `createImageBitmap` lui-même ; la photo reste alors lisible.
+ */
+async function decode(file: Blob): Promise<Decoded> {
+  const attempts: (() => Promise<Decoded>)[] = [];
+  if (typeof createImageBitmap === "function") {
+    attempts.push(async () => fromBitmap(await createImageBitmap(file, { imageOrientation: "from-image" })));
+    attempts.push(async () => fromBitmap(await createImageBitmap(file)));
+  }
+  if (typeof Image === "function") attempts.push(() => decodeWithImage(file));
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch {
+      // Méthode suivante.
+    }
+  }
+  const heic = sniffFileType(await readHead(file)) === "heic";
+  throw new PhotoError(
+    heic
+      ? "Cette photo HEIC ne peut pas être lue ici. Prends la photo depuis Cocon, ou choisis-la depuis Photos : elle sera convertie automatiquement."
+      : "Cette image ne peut pas être lue. Essaie une autre photo.",
+  );
+}
+
+/** Rend tout de suite la mémoire d'un canevas : sur iPhone, la mémoire totale des canevas est limitée. */
+function release(...canvases: HTMLCanvasElement[]) {
+  for (const canvas of canvases) {
+    canvas.width = 0;
+    canvas.height = 0;
   }
 }
 
@@ -73,26 +120,30 @@ async function toJpeg(canvas: HTMLCanvasElement, quality = JPEG_QUALITY): Promis
 
 /** Une photo (appareil photo, galerie ou fichier image) → photo réduite + coins de la feuille détectés. */
 export async function preparePhoto(file: Blob): Promise<ScanSource> {
-  const bitmap = await decode(file);
+  const image = await decode(file);
+  const canvases: HTMLCanvasElement[] = [];
   try {
-    const problem = checkPhotoDimensions(bitmap.width, bitmap.height);
+    const problem = checkPhotoDimensions(image.width, image.height);
     if (problem) throw new PhotoError(problem);
-    const { width, height } = fitWithin(bitmap.width, bitmap.height);
+    const { width, height } = fitWithin(image.width, image.height);
     const { canvas, context } = canvas2d(width, height);
+    canvases.push(canvas);
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
-    context.drawImage(bitmap, 0, 0, width, height);
+    context.drawImage(image.source, 0, 0, width, height);
     const blob = await toJpeg(canvas, 0.92);
 
     const factor = Math.min(1, DETECTION_SIDE / Math.max(width, height));
     const small = canvas2d(Math.max(1, Math.round(width * factor)), Math.max(1, Math.round(height * factor)));
+    canvases.push(small.canvas);
     small.context.drawImage(canvas, 0, 0, small.canvas.width, small.canvas.height);
     const pixels = small.context.getImageData(0, 0, small.canvas.width, small.canvas.height);
     const found = detectDocumentQuad(toGray(pixels), pixels.width, pixels.height);
     const detected = found ? scaleQuad(found, width / pixels.width) : null;
     return { blob, url: URL.createObjectURL(blob), width, height, detected };
   } finally {
-    bitmap.close();
+    image.close();
+    release(...canvases);
   }
 }
 
@@ -103,19 +154,23 @@ export function initialQuad(source: ScanSource): Quad {
 
 /** Page scannée : feuille redressée (les coins deviennent un rectangle), puis rendu choisi. */
 export async function scanPage(source: ScanSource, quad: Quad, mode: ScanMode, id: string = uuid()): Promise<PhotoPage> {
-  const bitmap = await decode(source.blob);
+  const image = await decode(source.blob);
+  const canvases: HTMLCanvasElement[] = [];
   try {
-    const { context } = canvas2d(source.width, source.height);
-    context.drawImage(bitmap, 0, 0, source.width, source.height);
+    const { canvas, context } = canvas2d(source.width, source.height);
+    canvases.push(canvas);
+    context.drawImage(image.source, 0, 0, source.width, source.height);
     const pixels = context.getImageData(0, 0, source.width, source.height);
     const size = outputSize(quad, MAX_PHOTO_SIDE);
     const flat = enhance(warpPerspective(pixels, quad, size.width, size.height), mode);
     const out = canvas2d(flat.width, flat.height);
+    canvases.push(out.canvas);
     out.context.putImageData(new ImageData(flat.data as Uint8ClampedArray<ArrayBuffer>, flat.width, flat.height), 0, 0);
     const blob = await toJpeg(out.canvas);
     return { id, blob, url: URL.createObjectURL(blob), width: flat.width, height: flat.height, source, quad, mode };
   } finally {
-    bitmap.close();
+    image.close();
+    release(...canvases);
   }
 }
 
