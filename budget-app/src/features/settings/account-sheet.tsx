@@ -12,7 +12,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ChoiceChip } from "@/components/ui/choice-chip";
 import { accountTypeEmoji, isLiquidAccount } from "@/config/accounts";
 import { useAsyncAction } from "@/hooks/use-async-action";
-import { accountBalance, accountTypeLabel, activeRulesUsingAccount, canDeactivateAccount } from "@/lib/accounts";
+import { accountBalance, accountTypeLabel, activeRulesUsingAccount, canDeactivateAccount, initialBalanceFor } from "@/lib/accounts";
 import { parseAmountInput, roundCents } from "@/lib/format";
 import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
@@ -25,10 +25,11 @@ function AccountForm({ accountId }: { accountId: string }) {
   const { closeSheet, showToast } = useUI();
   const account = accounts.find((a) => a.id === accountId);
   const index = accounts.findIndex((a) => a.id === accountId);
+  const current = account ? accountBalance(account, allTransactions, today) : 0;
 
   const [label, setLabel] = useState(account?.label ?? "");
-  const [balanceText, setBalanceText] = useState(amountToInput(Math.abs(account?.initialBalance ?? 0)));
-  const [sign, setSign] = useState<Sign>((account?.initialBalance ?? 0) < 0 ? "negative" : "positive");
+  const [balanceText, setBalanceText] = useState(amountToInput(Math.abs(current)));
+  const [sign, setSign] = useState<Sign>(current < 0 ? "negative" : "positive");
   const [isActive, setActive] = useState(account?.isActive ?? true);
   const [position, setPosition] = useState(index);
   const { pending, error, run } = useAsyncAction();
@@ -38,14 +39,16 @@ function AccountForm({ accountId }: { accountId: string }) {
   }
 
   const liquid = isLiquidAccount(account);
-  const initialBalance = roundCents(parseAmountInput(balanceText) * (sign === "negative" ? -1 : 1));
+  // Le solde du jour est recopié depuis la banque ; Cocon en déduit le solde de départ, sans toucher aux opérations.
+  const balance = roundCents(parseAmountInput(balanceText) * (sign === "negative" ? -1 : 1));
+  const gap = roundCents(balance - current);
+  const initialBalance = gap === 0 ? account.initialBalance : initialBalanceFor(account.id, balance, allTransactions, today);
   const deactivationBlocked = account.isActive && !canDeactivateAccount(accounts, account.id);
   // Récurrences actives sur ce compte : mises en pause automatiquement s'il est désactivé.
   const rulesToPause = account.isActive && !isActive ? activeRulesUsingAccount(recurring, account.id) : [];
   const changedFields = label.trim() !== account.label || initialBalance !== account.initialBalance || isActive !== account.isActive;
   const changedPosition = position !== index;
   const canSubmit = label.trim().length > 0 && (changedFields || changedPosition) && !pending;
-  const current = accountBalance({ id: account.id, initialBalance }, allTransactions, today);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -58,7 +61,8 @@ function AccountForm({ accountId }: { accountId: string }) {
     if (!ok) return;
     closeSheet();
     const pausedText = paused > 0 ? ` · ${paused} récurrence${paused > 1 ? "s" : ""} en pause` : "";
-    showToast(isActive ? `« ${label.trim()} » mis à jour` : `« ${label.trim()} » désactivé${pausedText}`);
+    const updatedText = gap !== 0 ? "solde actualisé" : "mis à jour";
+    showToast(isActive ? `« ${label.trim()} » ${updatedText}` : `« ${label.trim()} » désactivé${pausedText}`);
   }
 
   return (
@@ -73,7 +77,7 @@ function AccountForm({ accountId }: { accountId: string }) {
             <p className="text-[13px] text-muted">{account.isActive ? accountTypeLabel[account.type] : `${accountTypeLabel[account.type]} · désactivé`}</p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[12px] font-medium text-muted">Solde calculé</p>
+            <p className="text-[12px] font-medium text-muted">Dans Cocon</p>
             <Money value={current} cents="always" className="tabular text-[15px] font-semibold" />
           </div>
         </div>
@@ -83,11 +87,11 @@ function AccountForm({ accountId }: { accountId: string }) {
           <TextInput value={label} onChange={(event) => setLabel(event.target.value)} maxLength={60} />
         </label>
 
-        <FormField label="Solde de départ" as="div">
-          <AmountInput label="Solde de départ en euros" value={balanceText} onChange={setBalanceText} size="md" prefix={sign === "negative" ? "−" : undefined} />
+        <FormField label="Solde aujourd'hui" as="div">
+          <AmountInput label="Solde aujourd'hui en euros" value={balanceText} onChange={setBalanceText} size="md" prefix={sign === "negative" ? "−" : undefined} />
           {liquid && (
             <SegmentedControl
-              label="Signe du solde de départ"
+              label="Signe du solde"
               value={sign}
               onChange={setSign}
               options={[
@@ -98,12 +102,17 @@ function AccountForm({ accountId }: { accountId: string }) {
               className="mt-3 w-full"
             />
           )}
-          <p className="mt-2 text-[13px] text-muted">
-            Ce qu&apos;il y avait sur ce compte quand tu as commencé à le suivre dans Cocon.{" "}
-            {liquid
-              ? "Le solde calculé y ajoute les opérations saisies sur ce compte."
-              : "Le solde calculé y ajoute les versements d'épargne reçus (transferts depuis tes autres comptes)."}
-          </p>
+          {gap !== 0 ? (
+            <p className="mt-2 text-[13px] text-ink-soft" aria-live="polite">
+              <Money value={gap} sign="always" cents="always" className="font-semibold" /> par rapport à Cocon. Tes opérations ne changent pas : le solde de
+              départ passe de <Money value={account.initialBalance} cents="always" /> à <Money value={initialBalance} cents="always" />.
+            </p>
+          ) : (
+            <p className="mt-2 text-[13px] text-muted">
+              Recopie le solde affiché par ta banque pour actualiser ce compte.{" "}
+              {liquid ? "Les opérations saisies ensuite s'y ajoutent." : "Les versements d'épargne reçus ensuite s'y ajoutent."}
+            </p>
+          )}
         </FormField>
 
         <div className="flex items-center justify-between gap-4 rounded-2xl bg-canvas px-4 py-3">
@@ -237,7 +246,7 @@ function NewAccountForm() {
   );
 }
 
-/** Un compte : création, ou modification (nom, solde de départ, actif / désactivé, ordre d'affichage). */
+/** Un compte : création, ou modification (nom, solde du jour, actif / désactivé, ordre d'affichage). */
 export function AccountSheet() {
   const { sheet, isSheetOpen, sheetSession, closeSheet } = useUI();
   const active = sheet?.type === "account" ? sheet : null;

@@ -15,6 +15,7 @@ import { useBudget } from "@/store/budget-store";
 import { useUI } from "@/store/ui-store";
 import { BudgetSplitCard } from "./budget-split-card";
 import { CategoryBudgetRow } from "./category-budget-row";
+import { FixedChargesCard } from "./fixed-charges-card";
 import { IncomeSavingsCard } from "./income-savings-card";
 import { RecurringCard } from "./recurring-card";
 
@@ -96,6 +97,9 @@ export function BudgetScreen() {
             <IncomeSavingsCard summary={summary} />
           </div>
           <div className="order-5 animate-rise [animation-delay:250ms]">
+            <FixedChargesCard month={month} />
+          </div>
+          <div className="order-6 animate-rise [animation-delay:300ms]">
             <RecurringCard />
           </div>
         </div>

@@ -19,18 +19,20 @@ test.describe("Paramètres", () => {
 });
 
 test.describe("Mes comptes", () => {
-  test("modifier le solde de départ, désactiver un compte, comptes proposés dans les opérations", async ({ page }) => {
+  test("actualiser le solde, désactiver un compte, comptes proposés dans les opérations", async ({ page }) => {
     await page.goto("/parametres");
     await page.getByRole("button", { name: "Modifier le compte Compte joint" }).click();
     await expectNoA11yViolations(page);
-    await sheet(page).getByLabel("Solde de départ en euros").fill("250");
+    // Compte joint en démo : −100 € aujourd'hui. On recopie 150 € (solde de la banque).
+    await sheet(page).getByLabel("Solde aujourd'hui en euros").fill("150");
+    await sheet(page).getByRole("radio", { name: "Positif" }).click();
+    await expect(sheet(page)).toContainText("+250,00 € par rapport à Cocon");
     await sheet(page).getByLabel("Nom").fill("Compte commun");
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page.getByText("« Compte commun » mis à jour")).toBeVisible();
-    // Solde calculé = solde de départ + opérations du compte (−100 € en démo).
+    await expect(page.getByText("« Compte commun » solde actualisé")).toBeVisible();
     await expect(page.getByRole("button", { name: "Modifier le compte Compte commun" })).toContainText("150,00");
     await page.getByRole("button", { name: "Modifier le compte Compte commun" }).click();
-    await expect(sheet(page).getByLabel("Solde de départ en euros")).toHaveValue("250");
+    await expect(sheet(page).getByLabel("Solde aujourd'hui en euros")).toHaveValue("150");
     await sheet(page).getByRole("button", { name: "Fermer" }).click();
 
     await page.getByRole("button", { name: "Modifier le compte Espèces" }).click();
