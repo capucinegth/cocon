@@ -36,6 +36,15 @@ export function accountBalance(account: Pick<Account, "id" | "initialBalance">, 
   return roundCents(account.initialBalance + net);
 }
 
+/**
+ * Solde de départ qui donne `balance` au jour `until` : actualiser un compte d'après le solde affiché
+ * par sa banque. Les opérations ne changent pas, seul le point de départ est recalé.
+ */
+export function initialBalanceFor(accountId: AccountId, balance: number, transactions: Movement[], until: string): number {
+  const net = transactions.filter((t) => t.date <= until).reduce((acc, t) => acc + movementOn(t, accountId), 0);
+  return roundCents(balance - net);
+}
+
 /** Identifiants des comptes d'épargne (Livret A…), exclus du « solde total hors épargne ». */
 export function savingsAccountIds(accounts: Account[]): Set<AccountId> {
   return new Set(accounts.filter((a) => !isLiquidAccount(a)).map((a) => a.id));

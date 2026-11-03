@@ -185,7 +185,7 @@ export function SettingsScreen() {
           <SettingsGroup
             id="mes-comptes"
             title="Mes comptes"
-            description="Soldes calculés : solde de départ + opérations et versements d'épargne saisis dans Cocon. Touche un compte pour le modifier."
+            description="Soldes calculés : solde de départ + opérations et versements d'épargne saisis dans Cocon. Touche un compte pour le modifier ou actualiser son solde d'après ta banque."
           >
             {accounts.map((account) => (
               <li key={account.id}>

@@ -37,10 +37,10 @@ test.describe("Accueil", () => {
   test("garde de trésorerie « fin de mois » : alerte, sans toucher au chiffre du budget", async ({ page }) => {
     await page.goto("/parametres");
     await page.getByRole("button", { name: "Modifier le compte Compte courant" }).click();
-    await sheet(page).getByLabel("Solde de départ en euros").fill("500");
-    await sheet(page).getByRole("radio", { name: "Négatif (découvert)" }).click();
+    // Compte courant ramené à 1 199,99 € aujourd'hui (soit un solde de départ de −500 €).
+    await sheet(page).getByLabel("Solde aujourd'hui en euros").fill("1199,99");
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page.getByText("« Compte courant » mis à jour")).toBeVisible();
+    await expect(page.getByText("« Compte courant » solde actualisé")).toBeVisible();
 
     await navigate(page, "/");
     await expect.poll(() => heroAmount(page)).toBe("643,20 €");
