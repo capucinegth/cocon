@@ -10,6 +10,16 @@ export async function heroAmount(page: Page): Promise<string> {
 
 export const sheet = (page: Page) => page.locator("dialog[open]");
 
+/**
+ * Une règle de « Prélèvements et revenus réguliers » (Budget). Une charge fixe apparaît aussi dans
+ * « Charges fixes par compte » : on cible la liste des règles pour lever l'ambiguïté.
+ */
+export const recurringRule = (page: Page, name: RegExp) =>
+  page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Prélèvements et revenus réguliers" }) })
+    .getByRole("button", { name });
+
 const navTargets = {
   "/": /^Accueil$/,
   "/budget": /^Budget$/,

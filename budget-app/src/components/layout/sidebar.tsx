@@ -44,7 +44,7 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { openAdd } = useUI();
-  const { summary, status, source } = useBudget();
+  const { spendable, status, source } = useBudget();
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-ink/5 px-4 py-7 lg:flex">
@@ -80,10 +80,10 @@ export function Sidebar() {
               Tu peux encore dépenser
             </p>
             <p className="mt-0.5 text-xl font-semibold tracking-tight">
-              <Money value={summary.remaining} cents="always" />
+              <Money value={spendable.available} cents="always" />
             </p>
             <p className="mt-0.5 text-[13px] text-ink-soft">
-              ≈ <Money value={summary.perDay} cents="always" /> / jour
+              ≈ <Money value={spendable.perDay} cents="always" /> / jour
             </p>
           </Link>
         )}

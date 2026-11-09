@@ -4,8 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { findCategory } from "@/config/categories";
 import { appConfig } from "@/config/app";
 import { activeRulesUsingAccount, canDeactivateAccount, moveInOrder, ruleAccountsActive } from "@/lib/accounts";
-import { getMonthSummary, type MonthSummary } from "@/lib/budget";
+import { getBudgetHealth, getMonthSummary, type BudgetHealth, type MonthSummary } from "@/lib/budget";
 import { monthKey } from "@/lib/dates";
+import { getSpendable, type Spendable } from "@/lib/treasury";
 import { uuid } from "@/lib/ids";
 import { todayInParis } from "@/lib/paris-time";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -68,8 +69,10 @@ interface BudgetContextValue extends BudgetData {
   status: LoadStatus;
   loadError: string | null;
   currentMonth: string;
-  /** Résumé du mois en cours (le plus utilisé). */
+  /** Résumé du budget du mois en cours. */
   summary: MonthSummary;
+  /** « Tu peux encore dépenser » : argent réel sur les comptes, moins ce qui en partira d'ici la fin du mois. */
+  spendable: Spendable & { health: BudgetHealth };
   /** Toutes les opérations, y compris celles datées dans le futur. */
   allTransactions: Transaction[];
   reload: () => Promise<void>;
@@ -491,13 +494,20 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     const raw = state ?? emptyState(isDemo ? appConfig.demoToday : todayInParis());
     const data = deriveBudgetData(raw);
     const currentMonth = monthKey(data.today);
+    const summary = getMonthSummary(data, currentMonth);
+    const spendable = getSpendable(data.accounts, raw.transactions, data.upcoming, data.today);
+    // Même état que le budget (aisé / attention / serré), mais à partir de l'argent réel.
+    const health: BudgetHealth = summary.isEmpty
+      ? "empty"
+      : getBudgetHealth(spendable.available, spendable.perDay, summary.variableBudget / summary.daysInMonth);
     return {
       ...data,
       source: repository.source,
       status,
       loadError,
       currentMonth,
-      summary: getMonthSummary(data, currentMonth),
+      summary,
+      spendable: { ...spendable, health },
       allTransactions: raw.transactions,
       reload,
       addTransaction,

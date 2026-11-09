@@ -3,7 +3,7 @@
  * « Mes comptes », note d'une opération, récurrences, catégories, mois futurs et statistiques par mois.
  */
 import { expect, test } from "@playwright/test";
-import { clean, expectNoA11yViolations, fillOperation, navigate, openAdd, openMoreOptions, sheet } from "../support";
+import { clean, expectNoA11yViolations, fillOperation, navigate, openAdd, openMoreOptions, sheet, recurringRule } from "../support";
 
 test.describe("Paramètres", () => {
   test("plus aucune fonctionnalité promise mais indisponible", async ({ page }) => {
@@ -106,8 +106,8 @@ test.describe("Épargne : transfert entre comptes", () => {
     await expect(page.getByText("« Compte courant » désactivé · 9 récurrences en pause")).toBeVisible();
 
     await navigate(page, "/budget");
-    await expect(page.getByRole("button", { name: /Netflix/ })).toContainText("En pause");
-    await page.getByRole("button", { name: /Netflix/ }).click();
+    await expect(recurringRule(page, /Netflix/)).toContainText("En pause");
+    await recurringRule(page, /Netflix/).click();
     await sheet(page).getByRole("switch", { name: "Récurrence active" }).click();
     await expect(sheet(page).getByText(/Un de ses comptes est désactivé/)).toBeVisible();
     await expect(sheet(page).getByRole("button", { name: "Enregistrer" })).toBeDisabled();
@@ -141,14 +141,14 @@ test.describe("Opérations et récurrences", () => {
 
   test("modifier complètement une récurrence", async ({ page }) => {
     await page.goto("/budget");
-    await page.getByRole("button", { name: /Netflix/ }).click();
+    await recurringRule(page, /Netflix/).click();
     await expectNoA11yViolations(page);
     await sheet(page).getByRole("radio", { name: "Chaque semaine" }).click();
     await sheet(page).getByLabel("Prochaine échéance").fill("2026-09-22");
     await sheet(page).getByLabel("Catégorie").selectOption({ label: "🎟️ Loisirs" });
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
     await expect(page.getByText("Récurrence mise à jour")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Netflix/ })).toContainText("Chaque semaine · prochaine le 22 sept.");
+    await expect(recurringRule(page, /Netflix/)).toContainText("Chaque semaine · prochaine le 22 sept.");
   });
 
   test("une opération prévue le mois prochain est consultable dans Dépenses et revenus", async ({ page }) => {

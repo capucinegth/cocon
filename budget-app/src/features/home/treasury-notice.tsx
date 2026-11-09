@@ -6,8 +6,8 @@ import { formatLongDate } from "@/lib/dates";
 import type { TreasuryAlert } from "@/lib/treasury";
 
 /**
- * Garde de trésorerie (option A) : affichée uniquement si l'argent des comptes, après les opérations
- * à venir, ne suffit pas. Le chiffre du budget reste affiché tel quel au-dessus.
+ * Garde de trésorerie : affichée uniquement si le solde des comptes, dans l'ordre des opérations à venir,
+ * passerait sous zéro avant la fin du mois. Donne la date du point le plus bas.
  */
 export function TreasuryNotice({ alert }: { alert: TreasuryAlert }) {
   return (
@@ -18,18 +18,9 @@ export function TreasuryNotice({ alert }: { alert: TreasuryAlert }) {
           Attention à l&apos;argent sur tes comptes
         </h2>
         <p className="mt-1 text-[14px] leading-snug text-ink-soft">
-          {alert.kind === "overdraft" ? (
-            <>
-              Après tes prochaines opérations, ton solde pourrait descendre à <Money value={alert.lowest} cents="always" className="font-semibold text-ink" /> le{" "}
-              {formatLongDate(alert.date).toLowerCase()}
-              {alert.beforeExpectedIncome ? ", avant l'arrivée de tes revenus attendus" : ""}.
-            </>
-          ) : (
-            <>
-              Après tes prochaines opérations, il ne resterait que <Money value={alert.endBalance} cents="always" className="font-semibold text-ink" /> sur tes
-              comptes en fin de mois, moins que les <Money value={alert.remaining} cents="always" className="font-semibold text-ink" /> que ton budget te laisse.
-            </>
-          )}
+          Après tes prochaines opérations, ton solde pourrait descendre à <Money value={alert.lowest} cents="always" className="font-semibold text-ink" /> le{" "}
+          {formatLongDate(alert.date).toLowerCase()}
+          {alert.beforeExpectedIncome ? ", avant l'arrivée de tes revenus attendus" : ""}.
         </p>
       </div>
     </section>

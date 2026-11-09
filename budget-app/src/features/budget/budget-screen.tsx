@@ -37,7 +37,7 @@ export function BudgetScreen() {
     <>
       <PageHeader
         title={`Budget ${elided}`}
-        subtitle="Ce qui est prévu, dépensé, et ce que tu peux encore dépenser"
+        subtitle="Ce qui est prévu, dépensé, et ce qui reste dans ton budget"
         actions={
           <div className="hidden sm:block">
             <Button variant="soft" onClick={openCategorySheet}>

@@ -71,7 +71,7 @@ test.describe("Mes papiers", () => {
     await expectNoA11yViolations(page);
     // Le Budget n'est pas touché par le module.
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 
   test("recherche locale : salaire, assurance voiture, impôt, année", async ({ page }) => {
@@ -193,7 +193,7 @@ test.describe("Ajouter un document", () => {
     await expect(sheet(page)).toContainText("1 850 €");
     await page.keyboard.press("Escape");
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 
   test("refus propres : format interdit, plus de 20 Mo, photo trop petite ; annulation", async ({ page }) => {

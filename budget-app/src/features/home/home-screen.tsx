@@ -21,7 +21,7 @@ import { WelcomeCard } from "./welcome-card";
  */
 export function HomeScreen() {
   const data = useBudget();
-  const { summary } = data;
+  const { summary, spendable } = data;
   const name = data.profile?.displayName.trim();
   // Nouveau compte : aucune opération, aucun budget, aucun objectif.
   const isNew = data.allTransactions.length === 0 && data.plans.length === 0 && data.goals.length === 0;
@@ -32,7 +32,6 @@ export function HomeScreen() {
         transactions: data.allTransactions,
         upcoming: monthUpcoming(data, data.currentMonth),
         today: data.today,
-        remaining: summary.remaining,
         incomeExpected: summary.incomeExpected,
       }),
     [data, summary],
@@ -51,7 +50,7 @@ export function HomeScreen() {
       <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-12 xl:items-start">
         <div className="flex flex-col gap-4 sm:gap-5 max-xl:contents xl:col-span-7">
           <div className="order-1 animate-rise md:col-span-2">
-            <AvailableHero summary={summary} reassure={!alert} />
+            <AvailableHero spendable={spendable} reassure={!alert} />
           </div>
           {alert && (
             <div className="order-2 animate-rise md:col-span-2">
