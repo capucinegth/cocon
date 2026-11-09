@@ -1,6 +1,6 @@
 /**
- * V4 (mode démo, figé au 13 septembre 2026) : accueil centré sur « Tu peux encore dépenser »,
- * garde de trésorerie (option A : le chiffre du budget n'est jamais remplacé) et ajout rapide.
+ * V4 (mode démo, figé au 13 septembre 2026) : accueil centré sur « Tu peux encore dépenser »
+ * (argent réel sur les comptes − ce qui en partira ce mois-ci), garde de trésorerie et ajout rapide.
  */
 import { expect, test } from "@playwright/test";
 import { clean, expectNoA11yViolations, heroAmount, navigate, openAdd, openMoreOptions, sheet } from "../support";
@@ -8,11 +8,11 @@ import { clean, expectNoA11yViolations, heroAmount, navigate, openAdd, openMoreO
 test.describe("Accueil", () => {
   test("une seule réponse en tête, puis prochainement, mon argent et dernières dépenses", async ({ page }) => {
     await page.goto("/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
     const main = clean(await page.locator("main").innerText());
     expect(main).toContain("Ton budget est confortable pour finir le mois.");
     // Plus de doublons ni de calendrier sur l'accueil, et toujours le mois en cours.
-    expect(main.match(/643,20/g)).toHaveLength(1);
+    expect(main.match(/1 129,50/g)).toHaveLength(1);
     expect(main).not.toContain("Calendrier du mois");
     await expect(page.getByRole("heading", { name: "Attention à l'argent sur tes comptes" })).toHaveCount(0);
 
@@ -34,21 +34,19 @@ test.describe("Accueil", () => {
     await expectNoA11yViolations(page);
   });
 
-  test("garde de trésorerie « fin de mois » : alerte, sans toucher au chiffre du budget", async ({ page }) => {
+  test("actualiser un solde : le chiffre suit l'argent réel, pas le budget", async ({ page }) => {
     await page.goto("/parametres");
     await page.getByRole("button", { name: "Modifier le compte Compte courant" }).click();
-    // Compte courant ramené à 1 199,99 € aujourd'hui (soit un solde de départ de −500 €).
+    // Compte courant ramené à 1 199,99 € aujourd'hui.
     await sheet(page).getByLabel("Solde aujourd'hui en euros").fill("1199,99");
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
     await expect(page.getByText("« Compte courant » solde actualisé")).toBeVisible();
 
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
-    const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "Attention à l'argent sur tes comptes" }) });
-    // 1 059,19 € sur les comptes − 819,99 € à venir = 239,20 € en fin de mois, moins que 643,20 €.
-    expect(clean(await alert.innerText())).toContain("il ne resterait que 239,20 € sur tes comptes en fin de mois, moins que les 643,20 €");
-    // Pas de phrase rassurante quand l'alerte est là.
-    await expect(page.getByText("Ton budget est confortable pour finir le mois.")).toHaveCount(0);
+    // 1 059,19 € sur les comptes − 819,99 € qui partiront encore = 239,20 €.
+    await expect.poll(() => heroAmount(page)).toBe("239,20 €");
+    expect(clean(await page.locator("main").innerText())).toContain("1 059,19 € sur tes comptes − 819,99 €");
+    await expect(page.getByRole("heading", { name: "Attention à l'argent sur tes comptes" })).toHaveCount(0);
     await expectNoA11yViolations(page);
   });
 
@@ -61,8 +59,8 @@ test.describe("Accueil", () => {
     await sheet(page).getByRole("button", { name: "Autre date" }).click();
     await sheet(page).getByLabel("Choisir une date").fill("2026-09-16");
     await sheet(page).getByRole("button", { name: /^Ajouter −1 500/ }).click();
-    // Le chiffre du budget reste celui du budget (643,20 − 1 500).
-    await expect.poll(() => heroAmount(page)).toBe("−856,80 €");
+    // 1 129,50 − 1 500 : plus de sorties prévues que d'argent sur les comptes.
+    await expect.poll(() => heroAmount(page)).toBe("−370,50 €");
     const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "Attention à l'argent sur tes comptes" }) });
     await expect(alert).toContainText("ton solde pourrait descendre à");
     await expect(alert).toContainText("septembre");
@@ -84,7 +82,7 @@ test.describe("Ajout rapide", () => {
     await expect(sheet(page).getByLabel(/Description/)).toHaveCount(0);
     await expectNoA11yViolations(page);
     await sheet(page).getByRole("button", { name: /^Ajouter −9,90/ }).click();
-    await expect.poll(() => heroAmount(page)).toBe("633,30 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 119,60 €");
   });
 
   test("un marchand déjà vu reprend sa catégorie et son compte", async ({ page }) => {

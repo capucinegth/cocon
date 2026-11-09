@@ -4,22 +4,21 @@
  * Démo figée au dimanche 13 septembre 2026.
  */
 import { expect, test } from "@playwright/test";
-import { clean, fillOperation, heroAmount, navigate, openAdd, sheet } from "../support";
+import { clean, fillOperation, heroAmount, navigate, openAdd, sheet, recurringRule } from "../support";
 
 test.describe("Accueil", () => {
-  test("chiffres de septembre ; le calcul et le bilan d'août sont dans Budget", async ({ page }) => {
+  test("chiffres de septembre ; le reste du budget et le bilan d'août sont dans Budget", async ({ page }) => {
     await page.goto("/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
     const main = clean(await page.locator("main").innerText());
-    for (const text of ["Tu peux encore dépenser", "≈ 35,73 € / jour", "18 prochains jours", "Confortable", "Loyer", "Électricité"]) {
+    // Argent réel : 1 949,49 € sur les comptes − 819,99 € qui partiront encore en septembre.
+    for (const text of ["Tu peux encore dépenser", "≈ 62,75 € / jour", "18 prochains jours", "Confortable", "1 949,49 € sur tes comptes − 819,99 €", "Loyer", "Électricité"]) {
       expect(main).toContain(text);
     }
     // L'accueil montre toujours le mois en cours : plus de sélecteur de mois.
     await expect(page.getByRole("button", { name: "Mois précédent" })).toHaveCount(0);
-    await page.getByRole("link", { name: /Voir le calcul/ }).click();
-    await page.waitForURL((url) => url.pathname === "/budget");
-    await expect(page.locator("#calcul")).toContainText("Tu peux encore dépenser");
-    expect(clean(await page.locator("#calcul").innerText())).toContain("Tu peux encore dépenser 643,20 €");
+    await navigate(page, "/budget");
+    expect(clean(await page.locator("#calcul").innerText())).toContain("Reste dans ton budget 643,20 €");
     await page.getByRole("button", { name: "Mois précédent" }).click();
     expect(clean(await page.locator("#calcul").innerText())).toContain("Resté en fin de mois 96,00 €");
   });
@@ -31,7 +30,7 @@ test.describe("Accueil", () => {
     await page.goto("/connexion");
     await expect(page.getByRole("heading", { name: "Mode démo" })).toBeVisible();
     await page.getByRole("link", { name: "Ouvrir la démo" }).click();
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 });
 
@@ -41,9 +40,9 @@ test.describe("Opérations", () => {
     await openAdd(page);
     await fillOperation(page, { amount: "12,5", label: "Boulangerie", category: /Courses/ });
     await sheet(page).getByRole("button", { name: /^Ajouter −12,50/ }).click();
-    await expect.poll(() => heroAmount(page)).toBe("630,70 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 117,00 €");
     await page.getByRole("button", { name: "Annuler" }).click();
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 
   test("ajout « chaque semaine » : les prochaines échéances du mois sont déjà déduites", async ({ page }) => {
@@ -52,9 +51,9 @@ test.describe("Opérations", () => {
     await fillOperation(page, { amount: "12,5", label: "Boulangerie", category: /Courses/, recurrence: "Chaque semaine" });
     await sheet(page).getByRole("button", { name: /^Ajouter −12,50/ }).click();
     // 13, 20 et 27 septembre : 3 × 12,50 €.
-    await expect.poll(() => heroAmount(page)).toBe("605,70 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 092,00 €");
     await navigate(page, "/budget");
-    await expect(page.getByRole("button", { name: /Boulangerie/ })).toBeVisible();
+    await expect(recurringRule(page, /Boulangerie/)).toBeVisible();
   });
 
   test("une opération datée dans le futur apparaît dans « À venir »", async ({ page }) => {
@@ -63,7 +62,7 @@ test.describe("Opérations", () => {
     await fillOperation(page, { amount: "40", label: "Cadeau Léa", category: /Shopping/, date: "2026-09-25" });
     await expect(sheet(page).getByText(/Date à venir/)).toBeVisible();
     await sheet(page).getByRole("button", { name: /^Ajouter −40/ }).click();
-    await expect.poll(() => heroAmount(page)).toBe("603,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 089,50 €");
     await navigate(page, "/transactions");
     await expect(page.getByRole("button", { name: /Cadeau Léa.*Prévu le 25 sept/ })).toBeVisible();
   });
@@ -77,7 +76,7 @@ test.describe("Opérations", () => {
     await sheet(page).getByRole("button", { name: /^Enregistrer −60/ }).click();
     await expect(page.getByText("Opération modifiée")).toBeVisible();
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("637,40 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 123,70 €");
   });
 
   test("supprimer puis restaurer", async ({ page }) => {
@@ -87,7 +86,7 @@ test.describe("Opérations", () => {
     await expect(page.getByText("Opération supprimée")).toBeVisible();
     await page.getByRole("button", { name: "Annuler" }).click();
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("643,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 
   test("filtres : type, mois, catégorie et recherche", async ({ page }) => {
@@ -126,8 +125,10 @@ test.describe("Budget", () => {
     await page.getByRole("button", { name: "Modifier les revenus et l'épargne prévus" }).click();
     await sheet(page).getByLabel("Épargne prévue en euros").fill("400");
     await sheet(page).getByRole("button", { name: "Enregistrer" }).click();
+    // L'épargne seulement prévue réduit le reste du budget, pas l'argent réel (aucun virement programmé en plus).
+    expect(clean(await page.locator("#calcul").innerText())).toContain("Reste dans ton budget 543,20 €");
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("543,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 129,50 €");
   });
 });
 

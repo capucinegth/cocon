@@ -36,7 +36,7 @@ function TargetsForm({ month }: { month: string }) {
     <form onSubmit={handleSubmit} className="flex flex-col">
       <div className="flex flex-col gap-6 px-6 pb-6 pt-2">
         <p className="text-[14px] text-muted">
-          Pour {formatMonth(month).toLowerCase()}. Ce que tu attends ce mois-ci (ton salaire, par exemple) : tant qu&apos;il n&apos;est pas saisi, Cocon le compte dans ce que tu peux encore dépenser.
+          Pour {formatMonth(month).toLowerCase()}. Ce que tu attends ce mois-ci (ton salaire, par exemple) : tant qu&apos;il n&apos;est pas saisi, Cocon le compte dans le reste de ton budget (pas dans « Tu peux encore dépenser », qui ne compte que l&apos;argent déjà sur tes comptes).
         </p>
         <FormField label="Revenus prévus" as="div">
           <AmountInput label="Revenus prévus en euros" value={incomeText} onChange={setIncomeText} size="md" autoFocus />

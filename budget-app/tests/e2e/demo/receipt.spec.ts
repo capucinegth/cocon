@@ -43,7 +43,7 @@ test("scanner un ticket : montant, magasin et date pré-remplis, à vérifier", 
   await expect(sheet(page).getByRole("button", { name: "Hier" })).toHaveAttribute("aria-pressed", "true");
   await chooseCategory(page, /Courses/);
   await sheet(page).getByRole("button", { name: /^Ajouter −7,82/ }).click();
-  await expect.poll(() => heroAmount(page)).toBe("635,38 €"); // 643,20 − 7,82 : la dépense est déduite du disponible
+  await expect.poll(() => heroAmount(page)).toBe("1 121,68 €"); // 1 129,50 − 7,82 : la dépense sort du compte
 });
 
 test("le bouton n'est proposé que pour une dépense", async ({ page }) => {

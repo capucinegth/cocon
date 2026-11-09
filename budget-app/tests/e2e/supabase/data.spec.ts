@@ -41,7 +41,7 @@ test("dépense : ajout, rechargement, autre appareil, modification, suppression"
   await phone.context().close();
 });
 
-test("revenu, budget et épargne prévue : le disponible se calcule tout seul", async ({ page }) => {
+test("revenu, budget et épargne prévue : ce que tu peux dépenser suit l'argent réel", async ({ page }) => {
   await signUp(page);
   await openAdd(page);
   await fillOperation(page, { kind: "Revenu", amount: "2000", label: "Salaire", category: /Salaire/ });
@@ -63,10 +63,11 @@ test("revenu, budget et épargne prévue : le disponible se calcule tout seul", 
   await sheet(page).getByRole("button", { name: /^Ajouter −50/ }).click();
   await expect(page.locator("main")).toContainText("50 € / 300 €");
 
+  // 2 000 € reçus − 50 € dépensés. L'épargne seulement prévue (pas de virement programmé) ne sort pas des comptes.
   await page.goto("/");
-  await expect.poll(() => heroAmount(page)).toBe("1 750,00 €");
+  await expect.poll(() => heroAmount(page)).toBe("1 950,00 €");
   await page.reload();
-  await expect.poll(() => heroAmount(page)).toBe("1 750,00 €");
+  await expect.poll(() => heroAmount(page)).toBe("1 950,00 €");
 });
 
 test("récurrence mensuelle : visible dans le budget, mise en pause, suppression", async ({ page }) => {

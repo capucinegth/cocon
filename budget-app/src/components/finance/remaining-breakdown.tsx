@@ -6,7 +6,8 @@ import type { MonthSummary } from "@/lib/budget";
 
 /**
  * « Le calcul du mois » : le calcul complet, ligne à ligne, pour comprendre
- * d'où vient le chiffre principal (« Tu peux encore dépenser »). Affiché dans Budget.
+ * ce qui reste dans le budget du mois (revenus − dépenses − épargne prévue). Affiché dans Budget.
+ * Différent de « Tu peux encore dépenser » (accueil), qui part de l'argent réel sur les comptes.
  */
 export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
   const rows: { label: string; value: number; sign?: "always"; hint?: ReactNode }[] = [
@@ -34,7 +35,7 @@ export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
     <Card id="calcul" className="scroll-mt-6">
       <SectionHeader
         title={summary.isPast ? "Ce qu'il t'est resté" : "Le calcul du mois"}
-        subtitle={summary.isPast ? "Le calcul, ligne par ligne" : "D'où vient ce que tu peux encore dépenser"}
+        subtitle={summary.isPast ? "Le calcul, ligne par ligne" : "D'après ton budget : revenus du mois − dépenses − épargne prévue"}
       />
       <dl className="flex flex-col gap-3.5">
         {rows.map((row) => (
@@ -50,7 +51,7 @@ export function RemainingBreakdown({ summary }: { summary: MonthSummary }) {
         ))}
       </dl>
       <div className="mt-4 flex items-baseline justify-between gap-4 rounded-2xl bg-blush-50 px-4 py-3.5">
-        <p className="text-[15px] font-semibold">{summary.isPast ? "Resté en fin de mois" : "Tu peux encore dépenser"}</p>
+        <p className="text-[15px] font-semibold">{summary.isPast ? "Resté en fin de mois" : "Reste dans ton budget"}</p>
         <Money value={summary.remaining} cents="always" className="text-xl font-semibold tracking-tight" />
       </div>
     </Card>

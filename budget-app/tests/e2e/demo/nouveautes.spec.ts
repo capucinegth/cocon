@@ -3,7 +3,7 @@
  * Une charge dont le prélèvement de ce mois est déjà passé n'est pas déduite du disponible.
  */
 import { expect, test } from "@playwright/test";
-import { expectNoA11yViolations, heroAmount, navigate, openAdd, openMoreOptions, sheet } from "../support";
+import { expectNoA11yViolations, heroAmount, navigate, openAdd, openMoreOptions, sheet, recurringRule } from "../support";
 
 test.describe("Créer un compte", () => {
   test("un compte courant : listé avec son solde, proposé pour les opérations", async ({ page }) => {
@@ -64,15 +64,15 @@ test.describe("Charges fixes", () => {
     await expect(sheet(page).getByText(/lundi 5 octobre/)).toBeVisible();
     await sheet(page).getByRole("button", { name: /^Ajouter la charge/ }).click();
     await expect(page.getByText(/« Assurance habitation » ajoutée/)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Assurance habitation/ })).toContainText("Chaque mois · prochaine le 5 oct.");
+    await expect(recurringRule(page, /Assurance habitation/)).toContainText("Chaque mois · prochaine le 5 oct.");
 
     await navigate(page, "/");
     expect(await heroAmount(page)).toBe(before);
   });
 
-  test("prélèvement encore à venir ce mois-ci : prévu, il réduit ce qui reste à dépenser", async ({ page }) => {
+  test("prélèvement encore à venir ce mois-ci : prévu, il réduit ce que tu peux encore dépenser", async ({ page }) => {
     await page.goto("/");
-    expect(await heroAmount(page)).toBe("643,20 €");
+    expect(await heroAmount(page)).toBe("1 129,50 €");
     await navigate(page, "/budget");
     await page.getByRole("button", { name: "Charge fixe" }).click();
     await sheet(page).getByLabel("Nom").fill("Mutuelle");
@@ -80,9 +80,9 @@ test.describe("Charges fixes", () => {
     await sheet(page).getByLabel("Jour du prélèvement").fill("25");
     await expect(sheet(page).getByText(/Premier prélèvement : le vendredi 25 septembre/)).toBeVisible();
     await sheet(page).getByRole("button", { name: /^Ajouter la charge · −30/ }).click();
-    await expect(page.getByRole("button", { name: /Mutuelle/ })).toContainText("prochaine le 25 sept.");
+    await expect(recurringRule(page, /Mutuelle/)).toContainText("prochaine le 25 sept.");
 
     await navigate(page, "/");
-    await expect.poll(() => heroAmount(page)).toBe("613,20 €");
+    await expect.poll(() => heroAmount(page)).toBe("1 099,50 €");
   });
 });

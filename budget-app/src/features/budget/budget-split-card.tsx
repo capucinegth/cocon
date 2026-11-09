@@ -23,7 +23,7 @@ export function BudgetSplitCard({ summary }: { summary: MonthSummary }) {
   ];
   const legend = [
     ...segments,
-    { id: "disponible", label: "Encore à dépenser", value: Math.max(summary.remaining, 0), swatch: "bg-blush-100 ring-1 ring-blush-300", hint: "Ce que tu peux encore dépenser" },
+    { id: "disponible", label: "Reste du budget", value: Math.max(summary.remaining, 0), swatch: "bg-blush-100 ring-1 ring-blush-300", hint: "Ce que ton budget laisse encore" },
   ];
   const active = legend.find((item) => item.id === activeId);
   const share = (value: number) => (summary.income > 0 ? formatPercent(value / summary.income) : "—");
@@ -43,7 +43,7 @@ export function BudgetSplitCard({ summary }: { summary: MonthSummary }) {
           size={208}
         >
           <div className="max-w-[8.5rem]">
-            <p className="text-[13px] font-medium text-muted">{active?.label ?? "Encore à dépenser"}</p>
+            <p className="text-[13px] font-medium text-muted">{active?.label ?? "Reste du budget"}</p>
             <Money value={active?.value ?? summary.remaining} cents="always" className="text-[22px] font-semibold tracking-tight" />
             <p className="text-[13px] text-muted">{share(active?.value ?? summary.remaining)} des revenus</p>
           </div>

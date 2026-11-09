@@ -25,7 +25,7 @@ export function UpcomingList() {
 
   return (
     <Card>
-      <SectionHeader title="Prochainement" subtitle="Déjà comptés dans ton budget du mois" />
+      <SectionHeader title="Prochainement" subtitle="Déjà déduits de ce que tu peux dépenser" />
       {items.length === 0 ? (
         <EmptyState emoji="🌙" title="Plus rien de prévu" className="py-4">
           Aucun prélèvement ni dépense prévue d&apos;ici la fin du mois.

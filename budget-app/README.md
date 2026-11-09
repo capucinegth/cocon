@@ -34,13 +34,15 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 - **Compte** : inscription (prénom facultatif), connexion, déconnexion, mot de passe oublié,
   modification du mot de passe, session persistante,
   pages protégées, session expirée → retour à la connexion avec un message clair, erreurs en français.
-- **Accueil (toujours le mois en cours)** : « Tu peux encore dépenser » (réponse du budget du mois),
-  montant par jour, état du budget expliqué en une phrase (jamais de phrase rassurante si les données ne
-  la justifient pas) ; **garde de trésorerie** : si l'argent des comptes hors épargne, après les opérations
-  à venir du mois, passerait sous zéro ou ne couvrirait pas ce que le budget laisse à dépenser, une alerte
-  s'affiche — le chiffre du budget n'est jamais remplacé (`src/lib/treasury.ts`) ; « Prochainement »
-  (4 prochaines opérations) ; « Mon argent » (sur tes comptes · épargne · tout ton argent) ; dernières dépenses.
-  Le calcul ligne à ligne est dans Budget (« Voir le calcul »).
+- **Accueil (toujours le mois en cours)** : « Tu peux encore dépenser » = **argent réel** sur les comptes
+  hors épargne aujourd'hui − ce qui en partira encore d'ici la fin du mois (prélèvements réguliers,
+  dépenses datées, virements d'épargne programmés). Un revenu pas encore arrivé ne compte pas
+  (`getSpendable`, `src/lib/treasury.ts`). Le calcul est rappelé en une ligne sous le chiffre ; montant
+  par jour, état expliqué en une phrase (jamais de phrase rassurante si les données ne la justifient pas) ;
+  **garde de trésorerie** : si le solde, dans l'ordre des opérations à venir, passait sous zéro avant la
+  fin du mois, une alerte donne la date du point le plus bas ; « Prochainement » (4 prochaines opérations) ;
+  « Mon argent » (sur tes comptes · épargne · tout ton argent) ; dernières dépenses.
+  Le **reste du budget** (revenus − dépenses − épargne prévue) est un autre chiffre, détaillé dans Budget.
 - **Ajout rapide** : montant, catégorie **suggérée** d'après tes habitudes (les 4 plus utilisées, toutes
   accessibles), Ajouter. Description, note, date, répétition et compte sont dans « Plus d'options »
   (résumé visible). Un marchand déjà saisi reprend sa catégorie et son compte, sans jamais écraser un choix
@@ -162,8 +164,12 @@ ils ne créent jamais de compte de test sur un vrai projet. Une pile locale s'ob
 Au 13 septembre 2026 (date figée dans `src/config/app.ts`) :
 
 ```
-revenus 2 150 € − charges fixes 840 € − dépenses du quotidien 366,80 € − épargne 300 €
-= 643,20 € disponibles  →  ≈ 35,73 € / jour pour 18 jours
+Tu peux encore dépenser (accueil) :
+1 949,49 € sur les comptes hors épargne − 819,99 € qui partiront encore en septembre
+= 1 129,50 €  →  ≈ 62,75 € / jour pour 18 jours
+
+Reste dans ton budget (Budget) :
+revenus 2 150 € − charges fixes 840 € − dépenses du quotidien 366,80 € − épargne 300 € = 643,20 €
 ```
 
 ## Accessibilité

@@ -1,8 +1,8 @@
-/** V4 : argent sur les comptes, garde de trésorerie (option A) et suggestions locales de l'ajout rapide. */
+/** V4 : argent sur les comptes, « Tu peux encore dépenser », garde de trésorerie et suggestions locales de l'ajout rapide. */
 import { describe, expect, it } from "vitest";
 import { getMonthSummary, monthUpcoming } from "@/lib/budget";
 import { knownLabels, matchMerchant, merchantKey, rankCategories } from "@/lib/suggestions";
-import { getMoneyOverview, getTreasuryAlert, type TreasuryInput } from "@/lib/treasury";
+import { getMoneyOverview, getSpendable, getTreasuryAlert, type TreasuryInput } from "@/lib/treasury";
 import type { Account } from "@/types/finance";
 import { createDemoState } from "@/services/demo-repository";
 import { deriveBudgetData } from "@/store/budget-state";
@@ -30,24 +30,54 @@ describe("Mon argent : trois chiffres distincts", () => {
   });
 });
 
-describe("garde de trésorerie (option A) : le chiffre du budget n'est jamais remplacé", () => {
+describe("« Tu peux encore dépenser » : argent réel sur les comptes − ce qui en partira ce mois-ci", () => {
+  const expense = (date: string, amount: number) => ({ accountId: "courant", amount, kind: "expense" as const, date });
+
+  it("solde hors épargne aujourd'hui − dépenses et prélèvements à venir du mois", () => {
+    const spendable = getSpendable(accounts, [tx("2026-09-02", 100, "expense", "courses")], [expense("2026-09-15", 250)], "2026-09-13");
+    expect(spendable).toMatchObject({ onAccounts: 400, outgoing: 250, available: 150, daysLeft: 18 });
+    expect(spendable.perDay).toBeCloseTo(150 / 18);
+  });
+
+  it("un revenu à venir ne compte pas : seul l'argent déjà là", () => {
+    const upcoming = [expense("2026-09-15", 250), { accountId: "courant", amount: 2000, kind: "income" as const, date: "2026-09-28" }];
+    expect(getSpendable(accounts, [], upcoming, "2026-09-13").available).toBe(250);
+  });
+
+  it("un virement d'épargne programmé sort des comptes ; l'argent du Livret A n'est pas dépensable", () => {
+    const upcoming = [{ accountId: "courant", transferAccountId: "livret", amount: 300, kind: "saving" as const, date: "2026-09-20" }];
+    expect(getSpendable(accounts, [], upcoming, "2026-09-13")).toMatchObject({ onAccounts: 500, outgoing: 300, available: 200 });
+  });
+
+  it("ignore ce qui est daté du mois suivant, et ce qui est déjà passé", () => {
+    const upcoming = [expense("2026-10-01", 400), expense("2026-09-13", 50)];
+    expect(getSpendable(accounts, [], upcoming, "2026-09-13").available).toBe(500);
+  });
+
+  it("peut être négatif : plus de sorties prévues que d'argent sur les comptes", () => {
+    expect(getSpendable(accounts, [], [expense("2026-09-15", 650)], "2026-09-13").available).toBe(-150);
+  });
+
+  it("démo : 1 949,49 € sur les comptes − 819,99 € à venir = 1 129,50 € (le budget, lui, laisse 643,20 €)", () => {
+    const { data, all } = demo();
+    expect(getSpendable(data.accounts, all, data.upcoming, data.today)).toMatchObject({ onAccounts: 1949.49, outgoing: 819.99, available: 1129.5 });
+    expect(getMonthSummary(data, "2026-09").remaining).toBe(643.2);
+  });
+});
+
+describe("garde de trésorerie : le solde passerait sous zéro", () => {
   const base = (partial: Partial<TreasuryInput>): TreasuryInput => ({
     accounts,
     transactions: [],
     upcoming: [],
     today: "2026-09-13",
-    remaining: 200,
     incomeExpected: 0,
     ...partial,
   });
   const expense = (date: string, amount: number) => ({ accountId: "courant", amount, kind: "expense" as const, date });
 
-  it("aucune alerte quand les comptes couvrent les opérations à venir et le disponible", () => {
-    expect(getTreasuryAlert(base({ upcoming: [expense("2026-09-15", 250)] }))).toBeNull();
-  });
-
-  it("« short » : en fin de mois, il resterait moins que ce que le budget laisse à dépenser", () => {
-    expect(getTreasuryAlert(base({ upcoming: [expense("2026-09-15", 400)] }))).toEqual({ kind: "short", endBalance: 100, remaining: 200 });
+  it("aucune alerte quand les comptes couvrent les opérations à venir", () => {
+    expect(getTreasuryAlert(base({ upcoming: [expense("2026-09-15", 450)] }))).toBeNull();
   });
 
   it("« overdraft » : le solde passerait sous zéro, à la date du point le plus bas", () => {
@@ -57,14 +87,13 @@ describe("garde de trésorerie (option A) : le chiffre du budget n'est jamais re
     expect(alert).toEqual({ kind: "overdraft", lowest: -250, date: "2026-09-20", beforeExpectedIncome: false });
   });
 
-  it("un revenu attendu (pas encore saisi) compte en fin de mois, mais pas pour le point le plus bas", () => {
-    expect(getTreasuryAlert(base({ upcoming: [expense("2026-09-15", 400)], incomeExpected: 2000 }))).toBeNull();
+  it("signale si des revenus attendus (pas encore saisis) arriveront après le point le plus bas", () => {
     expect(getTreasuryAlert(base({ upcoming: [expense("2026-09-15", 600)], incomeExpected: 2000 }))).toMatchObject({ kind: "overdraft", beforeExpectedIncome: true });
   });
 
   it("un versement vers l'épargne sort des comptes ; l'argent du Livret A ne couvre pas les dépenses", () => {
-    const upcoming = [{ accountId: "courant", transferAccountId: "livret", amount: 350, kind: "saving" as const, date: "2026-09-14" }];
-    expect(getTreasuryAlert(base({ upcoming }))).toEqual({ kind: "short", endBalance: 150, remaining: 200 });
+    const upcoming = [{ accountId: "courant", transferAccountId: "livret", amount: 350, kind: "saving" as const, date: "2026-09-14" }, expense("2026-09-15", 200)];
+    expect(getTreasuryAlert(base({ upcoming }))).toMatchObject({ kind: "overdraft", lowest: -50, date: "2026-09-15" });
   });
 
   it("le solde du jour ne compte que les opérations passées (une opération future arrive par « à venir »)", () => {
@@ -76,17 +105,10 @@ describe("garde de trésorerie (option A) : le chiffre du budget n'est jamais re
     expect(getTreasuryAlert(base({ accounts: [accounts[1]], upcoming: [expense("2026-09-15", 9999)] }))).toBeNull();
   });
 
-  it("budget déjà à zéro ou négatif : pas d'alerte « short » (l'état du budget le dit déjà)", () => {
-    expect(getTreasuryAlert(base({ remaining: 0, upcoming: [expense("2026-09-15", 450)] }))).toBeNull();
-  });
-
-  it("démo : 1 949,49 € − 819,99 € à venir = 1 129,50 € ≥ 643,20 € : aucune alerte", () => {
+  it("démo : aucune alerte", () => {
     const { data, all } = demo();
-    const summary = getMonthSummary(data, "2026-09");
-    expect(summary.remaining).toBe(643.2);
     const input = { accounts: data.accounts, transactions: all, upcoming: monthUpcoming(data, "2026-09"), today: data.today };
-    expect(getTreasuryAlert({ ...input, remaining: summary.remaining, incomeExpected: summary.incomeExpected })).toBeNull();
-    expect(getTreasuryAlert({ ...input, remaining: 1200, incomeExpected: 0 })).toEqual({ kind: "short", endBalance: 1129.5, remaining: 1200 });
+    expect(getTreasuryAlert({ ...input, incomeExpected: 0 })).toBeNull();
   });
 });
 
