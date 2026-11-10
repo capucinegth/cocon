@@ -5,6 +5,8 @@ import { FixedChargeSheet } from "@/features/budget/fixed-charge-sheet";
 import { RecurringSheet } from "@/features/budget/recurring-sheet";
 import { TargetsSheet } from "@/features/budget/targets-sheet";
 import { AddGoalSheet } from "@/features/goals/add-goal-sheet";
+import { TutorialBridge } from "@/features/help/tutorial-bridge";
+import { TutorialSheet } from "@/features/help/tutorial-sheet";
 import { AccountSheet } from "@/features/settings/account-sheet";
 import { PasswordSheet } from "@/features/settings/password-sheet";
 import { ProfileSheet } from "@/features/settings/profile-sheet";
@@ -32,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <UIProvider>
           <PreferencesBridge />
           <PasswordRecoveryBridge />
+          <TutorialBridge />
           <Sidebar />
           <div className="lg:pl-64">
             <main className="mx-auto w-full max-w-[68rem] px-4 pb-44 sm:px-6 lg:px-10 lg:pb-16">
@@ -51,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ProfileSheet />
           <AccountSheet />
           <PasswordSheet />
+          <TutorialSheet />
           <Toaster />
         </UIProvider>
       </BudgetProvider>
