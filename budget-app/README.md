@@ -94,8 +94,13 @@ du projet Supabase de Cocon. Mise en place complète et points à valider : [`do
 - **Statistiques** : n'importe quel mois, sur tes comptes jour par jour, tendances — tout est recalculé
   automatiquement à chaque saisie.
 - **Paramètres** : Moi (prénom, mot de passe, déconnexion), Mes comptes, Catégories, Affichage (mode discret,
-  enregistré dans le profil), Mes données (export CSV), À propos. Les réglages du budget sont dans Budget.
-  Aucun réglage factice.
+  enregistré dans le profil), Mes données (export CSV), Aide (revoir le tuto), À propos. Les réglages du budget
+  sont dans Budget. Aucun réglage factice.
+- **Tuto de découverte** (`src/features/help/`) : 7 étapes (comptes, « Tu peux encore dépenser », ajout, charges
+  fixes, budget, objectifs et papiers), chacune avec l'endroit où trouver la fonction. Ouvert **une seule fois
+  automatiquement** à la première visite d'un compte ; « déjà vu » (`tutorialSeen`) est enregistré dans les
+  préférences du profil, donc retenu sur tous les appareils. Passer, fermer ou finir comptent comme vu.
+  Toujours accessible depuis Paramètres → Aide → « Revoir le tuto ». En démo, il ne s'ouvre pas tout seul.
 - **Responsive** : mobile d'abord ; tablette en deux colonnes ; grand écran avec barre latérale et
   colonnes côte à côte. Vérifié automatiquement à 320, 375, 390, 430, 768, 1024, 1280 et 1440 px
   (aucun débordement, aucun élément hors écran, pages et feuilles).

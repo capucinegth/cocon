@@ -1,6 +1,6 @@
 /** Inscription, connexion, déconnexion, pages protégées, session expirée. */
 import { expect, test } from "@playwright/test";
-import { logIn, PASSWORD, signUp, uniqueEmail } from "./helpers";
+import { logIn, otherDevice, PASSWORD, signUp, uniqueEmail } from "./helpers";
 
 test("les pages de l'application sont protégées", async ({ page }) => {
   await page.goto("/transactions");
@@ -17,6 +17,27 @@ test("inscription : compte prêt, accueil personnalisé et premiers pas", async 
   // Déjà connecté : la page de connexion renvoie vers l'application.
   await page.goto("/connexion");
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("tuto de découverte : ouvert à la première visite, puis plus jamais tout seul (même sur un autre appareil)", async ({ page, browser }) => {
+  const email = await signUp(page, { keepTutorial: true });
+  const tutorial = page.locator("dialog[open]").filter({ has: page.getByRole("heading", { name: "Découvrir Cocon" }) });
+  await expect(tutorial).toContainText("Étape 1 sur 7");
+  await tutorial.getByRole("button", { name: /Suivant/ }).click();
+  await expect(tutorial).toContainText("Renseigne tes comptes");
+  // Fermé en cours de route (croix) : compte comme vu.
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/rest/v1/profiles") && response.request().method() === "PATCH"),
+    tutorial.getByRole("button", { name: "Fermer" }).click(),
+  ]);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Découvrir Cocon" })).toHaveCount(0);
+
+  const phone = await otherDevice(browser, email);
+  await expect(phone.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(phone.getByRole("heading", { name: "Découvrir Cocon" })).toHaveCount(0);
+  await phone.context().close();
 });
 
 test("déconnexion puis reconnexion vers la page demandée", async ({ page }) => {

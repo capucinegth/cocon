@@ -23,6 +23,7 @@ export type SheetState =
   | { type: "profile" }
   | { type: "account"; accountId?: string }
   | { type: "password"; recovery: boolean }
+  | { type: "tutorial" }
   | null;
 
 export type ToastTone = "success" | "error";
@@ -56,6 +57,8 @@ interface UIContextValue {
   openAccount: (accountId?: string) => void;
   /** `recovery` : après un lien « mot de passe oublié ». */
   openPassword: (recovery?: boolean) => void;
+  /** Tuto de découverte (Paramètres → Aide, ou première visite). */
+  openTutorial: () => void;
   closeSheet: () => void;
   toast: Toast | null;
   showToast: (message: string, action?: { label: string; onAction: () => void }) => void;
@@ -99,6 +102,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const openProfile = useCallback(() => open({ type: "profile" }), [open]);
   const openAccount = useCallback((accountId?: string) => open({ type: "account", accountId }), [open]);
   const openPassword = useCallback((recovery = false) => open({ type: "password", recovery }), [open]);
+  const openTutorial = useCallback(() => open({ type: "tutorial" }), [open]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   const showToast = useCallback((message: string, action?: { label: string; onAction: () => void }) => {
@@ -162,6 +166,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openProfile,
       openAccount,
       openPassword,
+      openTutorial,
       closeSheet,
       toast,
       showToast,
@@ -187,6 +192,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       openProfile,
       openAccount,
       openPassword,
+      openTutorial,
       closeSheet,
       toast,
       showToast,

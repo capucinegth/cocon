@@ -284,6 +284,7 @@ function preferencesFromJson(json: Record<string, unknown> | null): Preferences 
   const notifications = (value.notifications ?? {}) as Record<string, unknown>;
   return {
     discreet: typeof value.discreet === "boolean" ? value.discreet : undefined,
+    tutorialSeen: typeof value.tutorialSeen === "boolean" ? value.tutorialSeen : undefined,
     notifications: {
       budgetAlerts: typeof notifications.budgetAlerts === "boolean" ? notifications.budgetAlerts : undefined,
       billReminders: typeof notifications.billReminders === "boolean" ? notifications.billReminders : undefined,

@@ -145,6 +145,8 @@ export interface MonthHistoryPoint {
 export interface Preferences {
   /** Mode discret : montants floutés. */
   discreet?: boolean;
+  /** Tuto de découverte déjà vu (ouvert une seule fois automatiquement, puis depuis Paramètres → Aide). */
+  tutorialSeen?: boolean;
   notifications?: {
     budgetAlerts?: boolean;
     billReminders?: boolean;

@@ -26,6 +26,7 @@ export function getDemoState(): BudgetState {
     goals: demoGoals,
     history: demoHistory,
     openingBalances: demoOpeningBalances,
-    profile: { id: "demo", displayName: "", preferences: {} },
+    // Démo : le tuto ne s'ouvre pas tout seul (il reste accessible depuis Paramètres → Aide).
+    profile: { id: "demo", displayName: "", preferences: { tutorialSeen: true } },
   });
 }

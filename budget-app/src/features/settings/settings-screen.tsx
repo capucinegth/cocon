@@ -3,6 +3,7 @@
 import {
   ArchiveRestore,
   ChevronRight,
+  CircleHelp,
   Download,
   EyeOff,
   Info,
@@ -97,7 +98,7 @@ export function SettingsScreen() {
   const data = useBudget();
   const { categories, accounts, profile, source, currentMonth, resetDemo, updateProfile, restoreCategory } = data;
   const { signOut } = useSession();
-  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openAccount, openPassword } = useUI();
+  const { showToast, showError, discreet, setDiscreet, openCategorySheet, openCategoryEdit, openProfile, openAccount, openPassword, openTutorial } = useUI();
   const [signingOut, setSigningOut] = useState(false);
   const isDemo = source === "demo";
 
@@ -321,6 +322,12 @@ export function SettingsScreen() {
               label="Confidentialité"
               hint={isDemo ? "En démo, tout reste dans ce navigateur" : "Tes données sont privées : liées à ton compte, invisibles des autres utilisateurs"}
             />
+          </SettingsGroup>
+
+          <SettingsGroup id="aide" title="Aide">
+            <SettingsRow icon={CircleHelp} label="Revoir le tuto" hint="Les bases de Cocon en 7 étapes" onClick={openTutorial}>
+              <ChevronRight size={18} className="text-muted" aria-hidden />
+            </SettingsRow>
           </SettingsGroup>
 
           <SettingsGroup title="À propos">
